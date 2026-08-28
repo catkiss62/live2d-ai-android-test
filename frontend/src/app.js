@@ -29,8 +29,8 @@ const PARAM_ALIASES = {
 const PARAM_SAFE_RANGES = {
   // 迷梦的 X2/Y2/Z2 是高精度物理输入。头部可充分使用声明范围；身体 Y
   // 仍然极小，避免某些模型把纵向参数做成压扁/拉伸。
-  head_x: [-28, 28], head_y: [-24, 24], head_z: [-24, 24],
-  body_x: [-8, 8], body_y: [-1.2, 1.2], body_z: [-7, 7],
+  head_x: [-30, 30], head_y: [-30, 30], head_z: [-30, 30],
+  body_x: [-10, 10], body_y: [-1.2, 1.2], body_z: [-10, 10],
   eye_l_open: [0, 1.5], eye_r_open: [0, 1.5],
   eye_l_smile: [0, 1], eye_r_smile: [0, 1],
   eye_x: [-1, 1], eye_y: [-1, 1],
@@ -38,6 +38,19 @@ const PARAM_SAFE_RANGES = {
   cheek: [0, 1.2], breath: [0, 1], tears_l: [0, 1], tears_r: [0, 1],
   dark: [0, 1], daze: [0, 1],
 };
+
+const ACTION_POSE_GAIN = 2;
+const ACTION_POSE_KEYS = new Set([
+  'head_x', 'head_y', 'head_z', 'body_x', 'body_y', 'body_z', 'eye_x', 'eye_y',
+]);
+
+function amplifyActionPose(values) {
+  const amplified = { ...values };
+  for (const key of ACTION_POSE_KEYS) {
+    if (Number.isFinite(amplified[key])) amplified[key] *= ACTION_POSE_GAIN;
+  }
+  return amplified;
+}
 
 const EMOTIONS = {
   neutral: { params: { eye_l_open: 1, eye_r_open: 1, mouth_form: 0, cheek: 0 }, idleAmp: 1, idleSpeed: 1, flutter: .08 },
@@ -449,7 +462,7 @@ function interpolateAction(name, time) {
   const action = ACTION_LIBRARY[name];
   if (!action) return {};
   if (typeof action.sample === 'function') {
-    return action.sample(Math.min(time, action.duration), action.duration);
+    return amplifyActionPose(action.sample(Math.min(time, action.duration), action.duration));
   }
   const frames = action.keyframes;
   if (!frames.length) return {};
@@ -476,7 +489,7 @@ function interpolateAction(name, time) {
     const to = next[key] ?? 0;
     values[key] = from + (to - from) * progress;
   }
-  return values;
+  return amplifyActionPose(values);
 }
 
 function addValues(target, source) {
