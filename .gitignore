@@ -1,0 +1,10 @@
+.gradle/
+.idea/
+local.properties
+**/build/
+frontend/node_modules/
+app/src/main/assets/stage/
+*.jks
+*.keystore
+*.apk
+*.aab
