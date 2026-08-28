@@ -45,7 +45,17 @@ let actionName = 'none';
 let actionTime = 0;
 let elapsed = 0;
 let blinkTime = 2.2;
+let naturalModelWidth = 1;
+let naturalModelHeight = 1;
+let adjustMode = false;
+let modelOffsetX = 0;
+let modelOffsetY = 0;
+let modelScaleMultiplier = 1;
+let lastGestureCenter = null;
+let lastGestureDistance = 0;
 const indexCache = new Map();
+const activePointers = new Map();
+const TRANSFORM_STORAGE_KEY = 'live2d-stage-transform-v1';
 
 function setStatus(text) {
   stateEl.textContent = text;
@@ -94,15 +104,99 @@ function write(alias, value) {
   if (index >= 0 && Number.isFinite(value)) core.setParameterValueByIndex(index, value);
 }
 
+function loadSavedTransform() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(TRANSFORM_STORAGE_KEY) || '{}');
+    modelOffsetX = Number.isFinite(saved.x) ? saved.x : 0;
+    modelOffsetY = Number.isFinite(saved.y) ? saved.y : 0;
+    modelScaleMultiplier = Number.isFinite(saved.scale)
+      ? Math.min(3, Math.max(.35, saved.scale)) : 1;
+  } catch {
+    modelOffsetX = 0;
+    modelOffsetY = 0;
+    modelScaleMultiplier = 1;
+  }
+}
+
+function saveTransform() {
+  localStorage.setItem(TRANSFORM_STORAGE_KEY, JSON.stringify({
+    x: modelOffsetX,
+    y: modelOffsetY,
+    scale: modelScaleMultiplier,
+  }));
+}
+
 function fitModel() {
   if (!model || !app) return;
-  const width = app.renderer.width;
-  const height = app.renderer.height;
-  const scale = Math.min(width / model.width, height / model.height) * 1.62;
+  const width = app.screen.width;
+  const height = app.screen.height;
+  const scale = Math.min(width / naturalModelWidth, height / naturalModelHeight)
+    * 1.62 * modelScaleMultiplier;
   model.scale.set(scale);
   model.anchor.set(.5, .5);
-  model.x = width * .5;
-  model.y = height * .55;
+  model.x = width * (.5 + modelOffsetX);
+  model.y = height * (.55 + modelOffsetY);
+}
+
+function gestureMetrics() {
+  const points = [...activePointers.values()];
+  if (!points.length) return { center: null, distance: 0 };
+  if (points.length === 1) return { center: points[0], distance: 0 };
+  const first = points[0];
+  const second = points[1];
+  return {
+    center: { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 },
+    distance: Math.hypot(second.x - first.x, second.y - first.y),
+  };
+}
+
+function resetGestureBaseline() {
+  const metrics = gestureMetrics();
+  lastGestureCenter = metrics.center;
+  lastGestureDistance = metrics.distance;
+}
+
+function installAdjustmentGestures() {
+  const canvas = app.view;
+
+  canvas.addEventListener('pointerdown', (event) => {
+    if (!adjustMode) return;
+    event.preventDefault();
+    canvas.setPointerCapture?.(event.pointerId);
+    activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    resetGestureBaseline();
+  });
+
+  canvas.addEventListener('pointermove', (event) => {
+    if (!adjustMode || !activePointers.has(event.pointerId)) return;
+    event.preventDefault();
+    const previousCenter = lastGestureCenter;
+    const previousDistance = lastGestureDistance;
+    activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const metrics = gestureMetrics();
+
+    if (previousCenter && metrics.center) {
+      modelOffsetX += (metrics.center.x - previousCenter.x) / Math.max(1, app.screen.width);
+      modelOffsetY += (metrics.center.y - previousCenter.y) / Math.max(1, app.screen.height);
+    }
+    if (activePointers.size >= 2 && previousDistance > 0 && metrics.distance > 0) {
+      modelScaleMultiplier = Math.min(3, Math.max(.35,
+        modelScaleMultiplier * (metrics.distance / previousDistance)));
+    }
+    lastGestureCenter = metrics.center;
+    lastGestureDistance = metrics.distance;
+    fitModel();
+  }, { passive: false });
+
+  const finishPointer = (event) => {
+    if (!activePointers.has(event.pointerId)) return;
+    activePointers.delete(event.pointerId);
+    resetGestureBaseline();
+    saveTransform();
+  };
+  canvas.addEventListener('pointerup', finishPointer);
+  canvas.addEventListener('pointercancel', finishPointer);
+  canvas.addEventListener('lostpointercapture', finishPointer);
 }
 
 function actionOffsets(name, t) {
@@ -160,8 +254,12 @@ async function start() {
   model = await Live2DModel.from(modelPath, { autoInteract: false, autoFocus: false });
   core = model.internalModel.coreModel;
   app.stage.addChild(model);
+  naturalModelWidth = Math.max(1, model.width);
+  naturalModelHeight = Math.max(1, model.height);
+  loadSavedTransform();
   fitModel();
   addEventListener('resize', fitModel);
+  installAdjustmentGestures();
   app.ticker.add(tick);
   setStatus('');
 }
@@ -174,6 +272,21 @@ window.live2dStage = {
   },
   testEmotion(name) { this.applyResponse(name, 'none'); },
   testAction(name) { this.applyResponse(emotionName, name); },
+  setAdjustMode(enabled) {
+    adjustMode = Boolean(enabled);
+    activePointers.clear();
+    resetGestureBaseline();
+    if (app?.view) app.view.style.touchAction = adjustMode ? 'none' : 'auto';
+    if (!adjustMode) saveTransform();
+    return adjustMode;
+  },
+  resetTransform() {
+    modelOffsetX = 0;
+    modelOffsetY = 0;
+    modelScaleMultiplier = 1;
+    fitModel();
+    saveTransform();
+  },
 };
 
 start().catch((error) => {
