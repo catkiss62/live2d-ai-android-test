@@ -31,9 +31,6 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
 import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewClientCompat;
 
@@ -179,7 +176,7 @@ public class MainActivity extends AppCompatActivity {
         statusText.setTextColor(Color.rgb(230, 218, 250));
         statusText.setTextSize(11);
         statusText.setMaxLines(2);
-        statusText.setText("等待导入");
+        statusText.setText("v0.1.2 · 等待导入");
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         statusLp.setMarginStart(dp(6));
         toolbar.addView(statusText, statusLp);
@@ -198,7 +195,7 @@ public class MainActivity extends AppCompatActivity {
 
         LinearLayout chatPanel = buildChatPanel();
         FrameLayout.LayoutParams chatLp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(245), Gravity.BOTTOM);
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(220), Gravity.BOTTOM);
         chatLp.leftMargin = dp(8);
         chatLp.rightMargin = dp(8);
         chatLp.bottomMargin = dp(8);
@@ -207,13 +204,6 @@ public class MainActivity extends AppCompatActivity {
         loadingOverlay = buildLoadingOverlay();
         root.addView(loadingOverlay, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
-        ViewCompat.setOnApplyWindowInsetsListener(root, (view, windowInsets) -> {
-            Insets bars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
-            view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
-            return windowInsets;
-        });
-        ViewCompat.requestApplyInsets(root);
 
         setContentView(root);
     }
