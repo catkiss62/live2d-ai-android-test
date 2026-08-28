@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Live2D Stage</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+    body { background: radial-gradient(circle at 50% 35%, #574c76 0%, #251d38 52%, #161220 100%); }
+    #stage, canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+    #state {
+      position: absolute; left: 50%; top: 44%; transform: translate(-50%, -50%);
+      color: rgba(255,255,255,.84); font: 14px sans-serif; text-align: center;
+      padding: 12px 16px; border-radius: 14px; background: rgba(25,18,38,.55);
+      backdrop-filter: blur(8px); max-width: 78%;
+    }
+  </style>
+</head>
+<body>
+  <div id="stage"></div>
+  <div id="state">等待导入 Cubism Core 和 Live2D 模型…</div>
+  <script type="module" src="/src/app.js"></script>
+</body>
+</html>
