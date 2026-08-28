@@ -228,7 +228,7 @@ public class MainActivity extends AppCompatActivity {
         statusText.setTextColor(Color.rgb(230, 218, 250));
         statusText.setTextSize(11);
         statusText.setMaxLines(2);
-        statusText.setText("v0.3.0 · 等待导入");
+        statusText.setText("v0.3.1 · 等待导入");
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         statusLp.setMarginStart(dp(6));
         toolbar.addView(statusText, statusLp);
@@ -383,7 +383,7 @@ public class MainActivity extends AppCompatActivity {
         panel.addView(header);
 
         TextView hint = new TextView(this);
-        hint.setText("动作位移 2 倍；新增三档跟随、摸头互动和语义动作导演。新效果均等待本轮实机确认。");
+        hint.setText("三档跟随保留；摸头可校准为更薄的头顶区域；四个风摆只收紧最终侧脸，身体幅度不变。");
         hint.setTextColor(Color.rgb(207, 194, 224));
         hint.setTextSize(11);
         hint.setPadding(0, dp(4), 0, dp(6));
@@ -428,7 +428,7 @@ public class MainActivity extends AppCompatActivity {
         controls.add(new PanelItem("校准摸头区域", () -> {
             testPanel.setVisibility(View.GONE);
             evaluateStage("window.live2dStage&&window.live2dStage.beginHeadZoneCalibration();");
-            toastLong("依次点击头部左上角和右下角");
+            toastLong("依次点击头顶区域左上角和右下角；可以框成较薄的长方形");
         }));
         controls.add(new PanelItem("重置摸头区域", () -> {
             evaluateStage("window.live2dStage&&window.live2dStage.resetHeadZone();");

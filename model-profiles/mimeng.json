@@ -41,7 +41,16 @@
   "interaction": {
     "hasAuthorHitAreas": false,
     "defaultHeadZone": {"left": 0.22, "top": 0.02, "right": 0.78, "bottom": 0.36},
+    "calibrationMinimumWidth": 0.08,
+    "calibrationMinimumHeight": 0.06,
     "headPatConfusedProbability": 0.1
+  },
+  "swayFaceYaw": {
+    "actions": ["wind_sway_soft", "wind_sway_medium", "wind_sway_showcase", "showcase_orbit"],
+    "outputParameter": "ParamAngleX",
+    "gain": 0.8,
+    "absoluteLimit": 24,
+    "preservePhysicsInputAndBodyMotion": true
   },
   "quirks": [
     "ParamAngleX2/Y2/Z2 feed extensive physics and must be preferred.",

@@ -59,6 +59,11 @@ const TOUCH_FOLLOW_LEVELS = {
 };
 
 const DEFAULT_HEAD_ZONE = { left: .22, top: .02, right: .78, bottom: .36 };
+const SWAY_FACE_YAW_ACTIONS = new Set([
+  'wind_sway_soft', 'wind_sway_medium', 'wind_sway_showcase', 'showcase_orbit',
+]);
+const SWAY_FACE_YAW_GAIN = .8;
+const SWAY_FACE_YAW_LIMIT = 24;
 
 const EMOTIONS = {
   neutral: { params: { eye_l_open: 1, eye_r_open: 1, mouth_form: 0, cheek: 0 }, idleAmp: 1, idleSpeed: 1, flutter: .08 },
@@ -298,6 +303,7 @@ let interactionActionName = 'none';
 let interactionActionTime = 0;
 let recentResponseActions = [];
 const indexCache = new Map();
+const rawIndexCache = new Map();
 const activePointers = new Map();
 const currentEmotionValues = {};
 const TRANSFORM_STORAGE_KEY = 'live2d-stage-transform-v1';
@@ -343,6 +349,17 @@ function findIndex(alias) {
   }
   indexCache.set(alias, -1);
   return -1;
+}
+
+function findRawIndex(id) {
+  if (rawIndexCache.has(id)) return rawIndexCache.get(id);
+  try {
+    const index = core.getParameterIndex(id);
+    rawIndexCache.set(id, index >= 0 ? index : -1);
+  } catch {
+    rawIndexCache.set(id, -1);
+  }
+  return rawIndexCache.get(id);
 }
 
 function write(alias, value) {
@@ -501,9 +518,9 @@ function handleHeadZoneCalibration(event) {
   const top = Math.max(0, Math.min(headZoneCalibrationFirstPoint.y, point.y));
   const right = Math.min(1, Math.max(headZoneCalibrationFirstPoint.x, point.x));
   const bottom = Math.min(1, Math.max(headZoneCalibrationFirstPoint.y, point.y));
-  if (right - left < .12 || bottom - top < .12) {
+  if (right - left < .08 || bottom - top < .06) {
     headZoneCalibrationFirstPoint = null;
-    setStatus('校准范围太小，请重新点击头部左上角');
+    setStatus('校准范围太小，请重新点击头顶左上角');
     return true;
   }
   headZone = { left, top, right, bottom };
@@ -905,6 +922,25 @@ function runPerformanceFrame() {
   tick(dt);
 }
 
+function limitSwayFaceYaw() {
+  const activeSway = SWAY_FACE_YAW_ACTIONS.has(actionName)
+    || SWAY_FACE_YAW_ACTIONS.has(autonomousActionName);
+  if (!activeSway || !core) return;
+
+  // 迷梦的 X2 是动作/物理输入，ParamAngleX 是物理计算后的最终脸部左右转向。
+  // 只压低输出，不改 X2、身体参数或动作路线，因此头部位置、头发惯性和身体摆动保留。
+  const physicsInputIndex = findRawIndex('ParamAngleX2');
+  const faceYawIndex = findRawIndex('ParamAngleX');
+  if (physicsInputIndex < 0 || faceYawIndex < 0 || physicsInputIndex === faceYawIndex) return;
+  try {
+    const current = core.getParameterValueByIndex(faceYawIndex);
+    if (!Number.isFinite(current)) return;
+    const reduced = Math.max(-SWAY_FACE_YAW_LIMIT,
+      Math.min(SWAY_FACE_YAW_LIMIT, current * SWAY_FACE_YAW_GAIN));
+    core.setParameterValueByIndex(faceYawIndex, reduced);
+  } catch { /* model/core without readable output parameters: leave the original motion */ }
+}
+
 async function start() {
   if (!modelPath) throw new Error('请先在App中导入Live2D模型ZIP');
   await loadCubismCore();
@@ -927,6 +963,7 @@ async function start() {
   // Writing X2/Y2/Z2 here lets hair, clothing and accessories consume the new
   // pose during the same frame instead of receiving it one frame too late.
   model.internalModel.on('afterMotionUpdate', runPerformanceFrame);
+  model.internalModel.on('beforeModelUpdate', limitSwayFaceYaw);
   setStatus('');
 }
 
