@@ -85,7 +85,7 @@ jobs:
         run: |
           gh issue create \
             --title "APK build success · run ${{ github.run_id }}" \
-            --body "v0.2.3-test built successfully from commit $(git rev-parse HEAD). Artifact: Live2D-AI-Test-APK"
+            --body "v0.3.0-test built successfully from commit $(git rev-parse HEAD). Artifact: Live2D-AI-Test-APK"
 
       - name: Mark failed build
         if: steps.android_build.outcome == 'failure'
