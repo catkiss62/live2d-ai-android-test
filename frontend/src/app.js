@@ -52,6 +52,14 @@ function amplifyActionPose(values) {
   return amplified;
 }
 
+const TOUCH_FOLLOW_LEVELS = {
+  standard: { eyeX: .9, eyeY: .72, headX: 24, headY: 20, headZ: 18, bodyX: 4.8, bodyY: .58, bodyZ: 3.8 },
+  vivid: { eyeX: 1, eyeY: .9, headX: 28, headY: 26, headZ: 24, bodyX: 6.4, bodyY: .62, bodyZ: 5 },
+  extreme: { eyeX: 1, eyeY: 1, headX: 30, headY: 30, headZ: 30, bodyX: 8, bodyY: .7, bodyZ: 7 },
+};
+
+const DEFAULT_HEAD_ZONE = { left: .22, top: .02, right: .78, bottom: .36 };
+
 const EMOTIONS = {
   neutral: { params: { eye_l_open: 1, eye_r_open: 1, mouth_form: 0, cheek: 0 }, idleAmp: 1, idleSpeed: 1, flutter: .08 },
   happy: { params: { eye_l_open: .72, eye_r_open: .72, eye_l_smile: .75, eye_r_smile: .75, mouth_form: .8, cheek: .25 }, idleAmp: 1.3, idleSpeed: 1.2, flutter: .15 },
@@ -175,6 +183,21 @@ const ACTION_LIBRARY = {
     { t: 0, eye_l_open: 0, eye_r_open: 0, head_y: 0 }, { t: .38, eye_l_open: -1, eye_r_open: -1, head_y: -1 },
     { t: .58, eye_l_open: -1, eye_r_open: -1, head_y: -1 }, { t: .95, eye_l_open: 0, eye_r_open: 0, head_y: 0 },
   ] },
+  head_pat: { duration: 1.75, keyframes: [
+    { t: 0, head_y: 0, head_z: 0, body_x: 0, eye_l_open: 0, eye_r_open: 0, eye_l_smile: 0, eye_r_smile: 0, cheek: 0, mouth_form: 0 },
+    { t: .28, head_y: -2.2, head_z: -2.5, body_x: -.35, eye_l_open: -.45, eye_r_open: -.45, eye_l_smile: .45, eye_r_smile: .45, cheek: .35, mouth_form: .2 },
+    { t: .68, head_y: -4.5, head_z: 3.8, body_x: .55, eye_l_open: -.85, eye_r_open: -.85, eye_l_smile: .92, eye_r_smile: .92, cheek: .82, mouth_form: .48 },
+    { t: 1.08, head_y: -3.6, head_z: -3.1, body_x: -.45, eye_l_open: -.72, eye_r_open: -.72, eye_l_smile: .8, eye_r_smile: .8, cheek: .68, mouth_form: .4 },
+    { t: 1.42, head_y: -1.3, head_z: 1.2, body_x: .16, eye_l_open: -.3, eye_r_open: -.3, eye_l_smile: .35, eye_r_smile: .35, cheek: .25, mouth_form: .18 },
+    { t: 1.75, head_y: 0, head_z: 0, body_x: 0, eye_l_open: 0, eye_r_open: 0, eye_l_smile: 0, eye_r_smile: 0, cheek: 0, mouth_form: 0 },
+  ] },
+  head_pat_confused: { duration: 1.8, keyframes: [
+    { t: 0, head_x: 0, head_y: 0, head_z: 0, eye_x: 0, eye_l_open: 0, eye_r_open: 0, brow_l_y: 0, brow_r_y: 0, mouth_form: 0 },
+    { t: .3, head_x: 1.5, head_y: 1, head_z: -2, eye_x: .12, eye_l_open: -.08, eye_r_open: .08, brow_l_y: -.12, brow_r_y: .2, mouth_form: -.08 },
+    { t: .78, head_x: 3.2, head_y: -1, head_z: -7, eye_x: .28, eye_l_open: -.28, eye_r_open: .15, brow_l_y: -.35, brow_r_y: .48, mouth_form: -.25 },
+    { t: 1.28, head_x: 2.3, head_y: -.5, head_z: -5.2, eye_x: .2, eye_l_open: -.2, eye_r_open: .1, brow_l_y: -.24, brow_r_y: .34, mouth_form: -.16 },
+    { t: 1.8, head_x: 0, head_y: 0, head_z: 0, eye_x: 0, eye_l_open: 0, eye_r_open: 0, brow_l_y: 0, brow_r_y: 0, mouth_form: 0 },
+  ] },
   // Coupled head/body oscillators: each channel has a different phase and speed,
   // so the body follows the head instead of moving like one rigid cardboard layer.
   wind_sway_soft: { duration: 6.2, sample: (time, duration) => sampleWindSway(time, duration, .68) },
@@ -261,10 +284,24 @@ let recentAutonomousActions = [];
 let focusedInteraction = false;
 let nextShowcaseActionAt = 28 + Math.random() * 32;
 let lastPerformanceUpdateAt = 0;
+let touchFollowLevel = 'vivid';
+let headZone = { ...DEFAULT_HEAD_ZONE };
+let headZoneCalibrationMode = false;
+let headZoneCalibrationFirstPoint = null;
+let patPointerId = null;
+let patCandidate = false;
+let patLastPoint = null;
+let patTravel = 0;
+let patStartedAt = 0;
+let patTriggered = false;
+let interactionActionName = 'none';
+let interactionActionTime = 0;
+let recentResponseActions = [];
 const indexCache = new Map();
 const activePointers = new Map();
 const currentEmotionValues = {};
 const TRANSFORM_STORAGE_KEY = 'live2d-stage-transform-v1';
+const INTERACTION_STORAGE_KEY = 'live2d-stage-interaction-v1';
 
 function setStatus(text) {
   stateEl.textContent = text;
@@ -346,6 +383,32 @@ function saveTransform() {
   }));
 }
 
+function loadInteractionSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(INTERACTION_STORAGE_KEY) || '{}');
+    touchFollowLevel = TOUCH_FOLLOW_LEVELS[saved.followLevel] ? saved.followLevel : 'vivid';
+    const zone = saved.headZone;
+    if (zone && ['left', 'top', 'right', 'bottom'].every((key) => Number.isFinite(zone[key]))) {
+      headZone = {
+        left: Math.max(0, Math.min(1, zone.left)),
+        top: Math.max(0, Math.min(1, zone.top)),
+        right: Math.max(0, Math.min(1, zone.right)),
+        bottom: Math.max(0, Math.min(1, zone.bottom)),
+      };
+    }
+  } catch {
+    touchFollowLevel = 'vivid';
+    headZone = { ...DEFAULT_HEAD_ZONE };
+  }
+}
+
+function saveInteractionSettings() {
+  localStorage.setItem(INTERACTION_STORAGE_KEY, JSON.stringify({
+    followLevel: touchFollowLevel,
+    headZone,
+  }));
+}
+
 function fitModel() {
   if (!model || !app) return;
   const currentWidth = app.screen.width;
@@ -398,6 +461,104 @@ function updateTouchGaze(event) {
     1 - ((event.clientY - rect.top) / rect.height) * 2));
 }
 
+function canvasPointFromEvent(event) {
+  const rect = app.view.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  return {
+    x: (event.clientX - rect.left) * app.screen.width / rect.width,
+    y: (event.clientY - rect.top) * app.screen.height / rect.height,
+  };
+}
+
+function normalizedModelPoint(event) {
+  if (!model) return null;
+  const point = canvasPointFromEvent(event);
+  const bounds = model.getBounds();
+  if (!point || !bounds.width || !bounds.height) return null;
+  return {
+    x: (point.x - bounds.x) / bounds.width,
+    y: (point.y - bounds.y) / bounds.height,
+  };
+}
+
+function isPointInHeadZone(event, margin = 0) {
+  const point = normalizedModelPoint(event);
+  if (!point) return false;
+  return point.x >= headZone.left - margin && point.x <= headZone.right + margin
+    && point.y >= headZone.top - margin && point.y <= headZone.bottom + margin;
+}
+
+function handleHeadZoneCalibration(event) {
+  if (!headZoneCalibrationMode) return false;
+  const point = normalizedModelPoint(event);
+  if (!point) return true;
+  if (!headZoneCalibrationFirstPoint) {
+    headZoneCalibrationFirstPoint = point;
+    setStatus('摸头区域校准：请点击头部右下角');
+    return true;
+  }
+  const left = Math.max(0, Math.min(headZoneCalibrationFirstPoint.x, point.x));
+  const top = Math.max(0, Math.min(headZoneCalibrationFirstPoint.y, point.y));
+  const right = Math.min(1, Math.max(headZoneCalibrationFirstPoint.x, point.x));
+  const bottom = Math.min(1, Math.max(headZoneCalibrationFirstPoint.y, point.y));
+  if (right - left < .12 || bottom - top < .12) {
+    headZoneCalibrationFirstPoint = null;
+    setStatus('校准范围太小，请重新点击头部左上角');
+    return true;
+  }
+  headZone = { left, top, right, bottom };
+  headZoneCalibrationMode = false;
+  headZoneCalibrationFirstPoint = null;
+  saveInteractionSettings();
+  setStatus('摸头区域已保存');
+  setTimeout(() => setStatus(''), 1600);
+  return true;
+}
+
+function beginPatCandidate(event) {
+  patPointerId = event.pointerId;
+  patCandidate = isPointInHeadZone(event);
+  patLastPoint = canvasPointFromEvent(event);
+  patTravel = 0;
+  patStartedAt = elapsed;
+  patTriggered = false;
+}
+
+function triggerHeadPat(forceConfused = false) {
+  const confused = forceConfused || Math.random() < .1;
+  interactionActionName = confused ? 'head_pat_confused' : 'head_pat';
+  interactionActionTime = 0;
+  autonomousActionName = 'none';
+  nextAutonomousActionAt = elapsed + 4 + Math.random() * 4;
+  window.AndroidStage?.onInteraction?.(confused ? '摸头彩蛋：疑惑' : '摸头反应');
+}
+
+function updatePatCandidate(event) {
+  if (event.pointerId !== patPointerId || !patCandidate || patTriggered) return;
+  if (!isPointInHeadZone(event, .08)) {
+    patCandidate = false;
+    return;
+  }
+  const point = canvasPointFromEvent(event);
+  if (!point || !patLastPoint) return;
+  patTravel += Math.hypot(point.x - patLastPoint.x, point.y - patLastPoint.y);
+  patLastPoint = point;
+  const threshold = Math.max(34, app.screen.width * .075);
+  if (elapsed - patStartedAt >= .12 && patTravel >= threshold) {
+    patTriggered = true;
+    triggerHeadPat(false);
+  }
+}
+
+function clearPatCandidate(event) {
+  if (event.pointerId !== patPointerId) return;
+  patPointerId = null;
+  patCandidate = false;
+  patLastPoint = null;
+  patTravel = 0;
+  patTriggered = false;
+}
+
 function installInteractionGestures() {
   const canvas = app.view;
   canvas.style.touchAction = 'none';
@@ -406,10 +567,12 @@ function installInteractionGestures() {
     event.preventDefault();
     canvas.setPointerCapture?.(event.pointerId);
     if (!adjustMode) {
+      if (handleHeadZoneCalibration(event)) return;
       if (touchGazePointerId === null) touchGazePointerId = event.pointerId;
       if (event.pointerId === touchGazePointerId) {
         touchGazeActive = true;
         updateTouchGaze(event);
+        beginPatCandidate(event);
       }
       return;
     }
@@ -420,7 +583,10 @@ function installInteractionGestures() {
   canvas.addEventListener('pointermove', (event) => {
     event.preventDefault();
     if (!adjustMode) {
-      if (event.pointerId === touchGazePointerId && touchGazeActive) updateTouchGaze(event);
+      if (event.pointerId === touchGazePointerId && touchGazeActive) {
+        updateTouchGaze(event);
+        updatePatCandidate(event);
+      }
       return;
     }
     if (!activePointers.has(event.pointerId)) return;
@@ -443,6 +609,7 @@ function installInteractionGestures() {
   }, { passive: false });
 
   const finishPointer = (event) => {
+    clearPatCandidate(event);
     if (event.pointerId === touchGazePointerId) {
       touchGazeActive = false;
       touchGazePointerId = null;
@@ -496,6 +663,50 @@ function addValues(target, source) {
   for (const [key, value] of Object.entries(source)) {
     target[key] = (target[key] || 0) + value;
   }
+}
+
+const DIRECTED_ACTIONS = {
+  agree: ['small_nod', 'nod', 'small_nod'],
+  disagree: ['shake_head'],
+  curious: ['tilt_head', 'head_tilt_idle', 'side_look', 'look_down_up', 'gentle_lean'],
+  approach: ['lean_forward', 'gentle_lean', 'head_tilt_idle'],
+  withdraw: ['lean_back', 'weight_shift'],
+  surprised_react: ['blink_surprised', 'lean_back', 'blink_surprised'],
+  sigh_react: ['sigh', 'sigh_sink'],
+  pout_react: ['pout', 'head_tilt_idle'],
+  celebrate: ['excited_bounce', 'nod', 'wind_sway_medium'],
+  calm_react: ['slow_blink', 'soft_sway', 'gentle_lean'],
+};
+
+const EMOTION_ACCENT_ACTIONS = {
+  happy: { probability: .58, pool: ['small_nod', 'nod', 'soft_sway', 'weight_shift'] },
+  excited: { probability: .82, pool: ['excited_bounce', 'nod', 'wind_sway_medium'] },
+  sad: { probability: .62, pool: ['sigh_sink', 'sigh', 'slow_blink', 'head_tilt_idle'] },
+  shy: { probability: .52, pool: ['head_tilt_idle', 'side_look', 'slow_blink', 'pout'] },
+  angry: { probability: .68, pool: ['shake_head', 'weight_shift', 'side_look'] },
+  surprised: { probability: .82, pool: ['blink_surprised', 'lean_back'] },
+  thinking: { probability: .64, pool: ['side_look', 'look_down_up', 'head_tilt_idle'] },
+  confused: { probability: .72, pool: ['tilt_head', 'side_look', 'look_down_up'] },
+  empathy: { probability: .46, pool: ['gentle_lean', 'slow_blink', 'head_tilt_idle'] },
+  love: { probability: .56, pool: ['gentle_lean', 'head_tilt_idle', 'soft_sway'] },
+  neutral: { probability: .16, pool: ['small_nod', 'slow_blink', 'side_look'] },
+};
+
+function chooseResponseAction(pool) {
+  if (!pool?.length) return 'none';
+  const candidates = pool.filter((name) => !recentResponseActions.includes(name));
+  const choices = candidates.length ? candidates : pool;
+  const selected = choices[Math.floor(Math.random() * choices.length)];
+  recentResponseActions.push(selected);
+  if (recentResponseActions.length > 3) recentResponseActions.shift();
+  return selected;
+}
+
+function resolveDirectedAction(intent, emotion) {
+  if (DIRECTED_ACTIONS[intent]) return chooseResponseAction(DIRECTED_ACTIONS[intent]);
+  if (ACTION_LIBRARY[intent]) return intent;
+  const accent = EMOTION_ACCENT_ACTIONS[emotion] || EMOTION_ACCENT_ACTIONS.neutral;
+  return Math.random() < accent.probability ? chooseResponseAction(accent.pool) : 'none';
 }
 
 function updateEmotion(dt) {
@@ -564,28 +775,42 @@ function updateGaze(dt) {
   idleGazeY += (idleGazeTargetY - idleGazeY) * idleBlend;
 
   const touchWeight = Math.max(Math.abs(touchGazeX), Math.abs(touchGazeY)) > .006 ? 1 : 0;
+  const follow = TOUCH_FOLLOW_LEVELS[touchFollowLevel] || TOUCH_FOLLOW_LEVELS.vivid;
+  const patActive = interactionActionName === 'head_pat' || interactionActionName === 'head_pat_confused';
+  const headFollowWeight = patActive ? .25 : 1;
+  const bodyFollowWeight = patActive ? .15 : 1;
   return {
-    eye_x: touchGazeX * .9 + idleGazeX * (1 - touchWeight),
-    eye_y: touchGazeY * .72 + idleGazeY * (1 - touchWeight),
-    head_x: touchHeadX * 24 + idleGazeX * 3.4 * (1 - touchWeight),
-    head_y: touchHeadY * 20 + idleGazeY * 2.2 * (1 - touchWeight),
-    head_z: touchHeadZ * 18,
-    body_x: touchBodyX * 4.8,
+    eye_x: touchGazeX * follow.eyeX + idleGazeX * (1 - touchWeight),
+    eye_y: touchGazeY * follow.eyeY + idleGazeY * (1 - touchWeight),
+    head_x: (touchHeadX * follow.headX + idleGazeX * 3.4 * (1 - touchWeight)) * headFollowWeight,
+    head_y: (touchHeadY * follow.headY + idleGazeY * 2.2 * (1 - touchWeight)) * headFollowWeight,
+    head_z: touchHeadZ * follow.headZ * headFollowWeight,
+    body_x: touchBodyX * follow.bodyX * bodyFollowWeight,
     // Kept below one degree: enough to feed the model's vertical physics without
     // repeating the earlier visible squash.
-    body_y: touchBodyY * .58,
-    body_z: touchBodyZ * 3.8,
+    body_y: touchBodyY * follow.bodyY * bodyFollowWeight,
+    body_z: touchBodyZ * follow.bodyZ * bodyFollowWeight,
   };
 }
 
 function chooseAutonomousAction(profile) {
   const weighted = emotionName === 'sad'
-    ? ['sigh_sink', 'slow_blink', 'head_tilt_idle', 'side_look']
-    : emotionName === 'excited' || emotionName === 'happy'
-      ? ['small_nod', 'weight_shift', 'look_around', 'head_tilt_idle', 'soft_sway', 'wind_sway_soft']
-      : emotionName === 'thinking' || emotionName === 'confused'
-        ? ['side_look', 'head_tilt_idle', 'look_down_up', 'slow_blink']
-        : ['small_nod', 'head_tilt_idle', 'side_look', 'weight_shift', 'gentle_lean', 'sigh_sink', 'slow_blink', 'look_around', 'soft_sway', 'wind_sway_soft'];
+    ? ['sigh_sink', 'sigh', 'slow_blink', 'head_tilt_idle', 'side_look', 'gentle_lean']
+    : emotionName === 'excited'
+      ? ['excited_bounce', 'small_nod', 'nod', 'weight_shift', 'look_around', 'soft_sway', 'wind_sway_soft', 'wind_sway_medium']
+      : emotionName === 'happy'
+        ? ['small_nod', 'nod', 'weight_shift', 'look_around', 'head_tilt_idle', 'soft_sway', 'wind_sway_soft', 'excited_bounce']
+        : emotionName === 'thinking' || emotionName === 'confused'
+          ? ['side_look', 'head_tilt_idle', 'tilt_head', 'look_down_up', 'slow_blink', 'gentle_lean']
+          : emotionName === 'angry'
+            ? ['shake_head', 'weight_shift', 'side_look', 'head_tilt_idle']
+            : emotionName === 'shy'
+              ? ['head_tilt_idle', 'side_look', 'slow_blink', 'pout', 'gentle_lean']
+              : emotionName === 'surprised'
+                ? ['blink_surprised', 'lean_back', 'side_look', 'slow_blink']
+                : emotionName === 'love' || emotionName === 'empathy'
+                  ? ['gentle_lean', 'head_tilt_idle', 'slow_blink', 'soft_sway', 'wind_sway_soft']
+                  : ['small_nod', 'head_tilt_idle', 'side_look', 'weight_shift', 'gentle_lean', 'slow_blink', 'look_around', 'soft_sway', 'wind_sway_soft'];
   const candidates = weighted.filter((name) => !recentAutonomousActions.includes(name));
   const pool = candidates.length ? candidates : weighted;
   const selected = pool[Math.floor(Math.random() * pool.length)];
@@ -597,6 +822,7 @@ function chooseAutonomousAction(profile) {
 function maybeStartAutonomousAction() {
   if (!autonomousIdleEnabled || adjustMode || focusedInteraction
       || touchGazeActive || elapsed - touchGazeReleasedAt < 1
+      || interactionActionName !== 'none'
       || actionName !== 'none' || autonomousActionName !== 'none') return;
   if (elapsed >= nextShowcaseActionAt) {
     const roll = Math.random();
@@ -621,6 +847,7 @@ function tick(dt) {
   elapsed += dt;
   actionTime += dt;
   autonomousActionTime += dt;
+  interactionActionTime += dt;
   blinkTime -= dt;
 
   const profile = EMOTIONS[emotionName] || EMOTIONS.neutral;
@@ -641,6 +868,13 @@ function tick(dt) {
     if (finishActionIfNeeded(actionName, actionTime)) {
       actionName = 'none';
       nextAutonomousActionAt = elapsed + 5 + Math.random() * 7;
+    }
+  }
+  if (interactionActionName !== 'none') {
+    addValues(values, interpolateAction(interactionActionName, interactionActionTime));
+    if (finishActionIfNeeded(interactionActionName, interactionActionTime)) {
+      interactionActionName = 'none';
+      interactionActionTime = 0;
     }
   }
 
@@ -685,6 +919,7 @@ async function start() {
   naturalModelWidth = Math.max(1, model.width);
   naturalModelHeight = Math.max(1, model.height);
   loadSavedTransform();
+  loadInteractionSettings();
   fitModel();
   addEventListener('resize', fitModel);
   installInteractionGestures();
@@ -698,13 +933,25 @@ async function start() {
 window.live2dStage = {
   applyResponse(emotion = 'neutral', action = 'none') {
     emotionName = EMOTIONS[emotion] ? emotion : 'neutral';
-    actionName = ACTION_LIBRARY[action] ? action : 'none';
+    actionName = resolveDirectedAction(action, emotionName);
     actionTime = 0;
     autonomousActionName = 'none';
     nextAutonomousActionAt = elapsed + 5 + Math.random() * 7;
   },
-  testEmotion(name) { this.applyResponse(name, 'none'); },
-  testAction(name) { this.applyResponse(emotionName, name); },
+  testEmotion(name) {
+    emotionName = EMOTIONS[name] ? name : 'neutral';
+    actionName = 'none';
+    actionTime = 0;
+  },
+  testAction(name) {
+    actionName = ACTION_LIBRARY[name] ? name : 'none';
+    actionTime = 0;
+    autonomousActionName = 'none';
+  },
+  testHeadPat(confused = false) {
+    triggerHeadPat(Boolean(confused));
+    return interactionActionName;
+  },
   testExpression(name) {
     if (!model || !name) return false;
     Promise.resolve(model.expression(name)).catch(console.error);
@@ -747,8 +994,30 @@ window.live2dStage = {
     emotionName = 'neutral';
     actionName = 'none';
     autonomousActionName = 'none';
+    interactionActionName = 'none';
     actionTime = 0;
+    interactionActionTime = 0;
     this.clearExpression();
+  },
+  setTouchFollowLevel(level) {
+    touchFollowLevel = TOUCH_FOLLOW_LEVELS[level] ? level : 'vivid';
+    saveInteractionSettings();
+    return touchFollowLevel;
+  },
+  getTouchFollowLevel() { return touchFollowLevel; },
+  beginHeadZoneCalibration() {
+    adjustMode = false;
+    headZoneCalibrationMode = true;
+    headZoneCalibrationFirstPoint = null;
+    setStatus('摸头区域校准：请点击头部左上角');
+    return true;
+  },
+  resetHeadZone() {
+    headZone = { ...DEFAULT_HEAD_ZONE };
+    headZoneCalibrationMode = false;
+    headZoneCalibrationFirstPoint = null;
+    saveInteractionSettings();
+    return true;
   },
   setAdjustMode(enabled) {
     adjustMode = Boolean(enabled);
@@ -758,6 +1027,9 @@ window.live2dStage = {
     touchGazePointerId = null;
     touchGazeTargetX = 0;
     touchGazeTargetY = 0;
+    clearPatCandidate({ pointerId: patPointerId });
+    headZoneCalibrationMode = false;
+    headZoneCalibrationFirstPoint = null;
     autonomousActionName = 'none';
     if (app?.view) app.view.style.touchAction = 'none';
     if (!adjustMode) saveTransform();
