@@ -53,6 +53,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -129,6 +130,7 @@ public class MainActivity extends AppCompatActivity {
     private String touchFollowLevel;
     private final List<String> expressionPresets = new ArrayList<>();
     private final List<MotionPreset> motionPresets = new ArrayList<>();
+    private final Set<String> activeAppearancePresets = new LinkedHashSet<>();
 
     private final ActivityResultLauncher<String[]> modelZipPicker = registerForActivityResult(
             new ActivityResultContracts.OpenDocument(), this::onModelZipPicked);
@@ -148,6 +150,7 @@ public class MainActivity extends AppCompatActivity {
         runtimeRoot.mkdirs();
 
         restoreDetectedPresets();
+        restoreActiveAppearancePresets();
         buildUi();
         configureWebView();
         loadStage();
@@ -228,7 +231,7 @@ public class MainActivity extends AppCompatActivity {
         statusText.setTextColor(Color.rgb(230, 218, 250));
         statusText.setTextSize(11);
         statusText.setMaxLines(2);
-        statusText.setText("v0.3.1 · 等待导入");
+        statusText.setText("v0.3.2 · 等待导入");
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         statusLp.setMarginStart(dp(6));
         toolbar.addView(statusText, statusLp);
@@ -383,7 +386,7 @@ public class MainActivity extends AppCompatActivity {
         panel.addView(header);
 
         TextView hint = new TextView(this);
-        hint.setText("三档跟随保留；摸头可校准为更薄的头顶区域；四个风摆只收紧最终侧脸，身体幅度不变。");
+        hint.setText("程序情绪已增强；ZIP外观／部件使用○／✓独立开关，可同时叠加，全部还原不会修改原ZIP。");
         hint.setTextColor(Color.rgb(207, 194, 224));
         hint.setTextSize(11);
         hint.setPadding(0, dp(4), 0, dp(6));
@@ -407,8 +410,11 @@ public class MainActivity extends AppCompatActivity {
 
         List<PanelItem> controls = new ArrayList<>();
         controls.add(new PanelItem("恢复正常", () -> {
+            activeAppearancePresets.clear();
+            saveActiveAppearancePresets();
             evaluateStage("window.live2dStage&&window.live2dStage.resetPerformance();");
             setStatus("已恢复正常表情和姿态");
+            rebuildTestPanel();
         }));
         controls.add(new PanelItem(autonomousIdleEnabled ? "暂停自主待机" : "开启自主待机", () -> {
             autonomousIdleEnabled = !autonomousIdleEnabled;
@@ -477,19 +483,42 @@ public class MainActivity extends AppCompatActivity {
         List<PanelItem> facePresets = new ArrayList<>();
         List<PanelItem> appearancePresets = new ArrayList<>();
         for (String preset : expressionPresets) {
-            PanelItem item = new PanelItem(preset, () -> {
-                evaluateStage("window.live2dStage&&window.live2dStage.testExpression("
-                        + JSONObject.quote(preset) + ");");
-                setStatus("测试ZIP预设：" + preset);
-            });
-            if (looksLikeFacePreset(preset)) facePresets.add(item);
-            else appearancePresets.add(item);
+            if (looksLikeFacePreset(preset)) {
+                facePresets.add(new PanelItem(preset, () -> {
+                    evaluateStage("window.live2dStage&&window.live2dStage.testExpression("
+                            + JSONObject.quote(preset) + ");");
+                    setStatus("测试ZIP表情：" + preset);
+                }));
+            } else {
+                boolean active = activeAppearancePresets.contains(preset);
+                appearancePresets.add(new PanelItem((active ? "✓ " : "○ ") + preset, () -> {
+                    boolean enable = !activeAppearancePresets.contains(preset);
+                    if (enable) activeAppearancePresets.add(preset);
+                    else activeAppearancePresets.remove(preset);
+                    saveActiveAppearancePresets();
+                    evaluateStage("window.live2dStage&&window.live2dStage.setAppearancePreset("
+                            + JSONObject.quote(preset) + "," + enable + ");");
+                    setStatus("外观／部件：" + preset + (enable ? " 已开启" : " 已关闭"));
+                    rebuildTestPanel();
+                }));
+            }
         }
         if (!facePresets.isEmpty()) {
             addPanelSection("ZIP表情预设（" + facePresets.size() + "）", facePresets);
         }
         if (!appearancePresets.isEmpty()) {
-            addPanelSection("ZIP外观／部件预设（" + appearancePresets.size() + "）", appearancePresets);
+            List<PanelItem> appearanceControls = new ArrayList<>();
+            appearanceControls.add(new PanelItem("全部还原（当前 "
+                    + activeAppearancePresets.size() + " 项开启）", () -> {
+                activeAppearancePresets.clear();
+                saveActiveAppearancePresets();
+                evaluateStage("window.live2dStage&&window.live2dStage.clearAppearancePresets();");
+                setStatus("ZIP外观／部件已全部还原");
+                rebuildTestPanel();
+            }));
+            appearanceControls.addAll(appearancePresets);
+            addPanelSection("ZIP外观／部件开关（" + appearancePresets.size()
+                    + "，可叠加）", appearanceControls);
         }
         if (expressionPresets.isEmpty()) {
             addPanelNote("ZIP预设", "尚未导入模型，或模型中没有 .exp3.json 预设。");
@@ -570,6 +599,35 @@ public class MainActivity extends AppCompatActivity {
         return false;
     }
 
+    private void saveActiveAppearancePresets() {
+        JSONArray values = new JSONArray();
+        for (String name : activeAppearancePresets) values.put(name);
+        prefs.edit().putString("active_appearance_presets", values.toString()).apply();
+    }
+
+    private void restoreActiveAppearancePresets() {
+        activeAppearancePresets.clear();
+        try {
+            JSONArray values = new JSONArray(
+                    prefs.getString("active_appearance_presets", "[]"));
+            for (int i = 0; i < values.length(); i++) {
+                String name = values.optString(i, "").trim();
+                if (!name.isEmpty() && expressionPresets.contains(name)
+                        && !looksLikeFacePreset(name)) {
+                    activeAppearancePresets.add(name);
+                }
+            }
+        } catch (Exception ignored) {
+            activeAppearancePresets.clear();
+        }
+    }
+
+    private String activeAppearancePresetsJson() {
+        JSONArray values = new JSONArray();
+        for (String name : activeAppearancePresets) values.put(name);
+        return values.toString();
+    }
+
     private void evaluateStage(String script) {
         webView.evaluateJavascript(script, null);
     }
@@ -646,6 +704,8 @@ public class MainActivity extends AppCompatActivity {
                     expressionPresets.addAll(detectedExpressions);
                     motionPresets.clear();
                     motionPresets.addAll(detectedMotions);
+                    activeAppearancePresets.clear();
+                    saveActiveAppearancePresets();
                     rebuildTestPanel();
                     hideLoading();
                     String result = "模型导入成功：发现预设 " + detectedExpressions.size()
@@ -1302,6 +1362,8 @@ public class MainActivity extends AppCompatActivity {
                 if ("模型已就绪".equals(status)) {
                     evaluateStage("window.live2dStage&&window.live2dStage.setTouchFollowLevel("
                             + JSONObject.quote(touchFollowLevel) + ");");
+                    evaluateStage("window.live2dStage&&window.live2dStage.setAppearancePresets("
+                            + activeAppearancePresetsJson() + ");");
                 }
             });
         }

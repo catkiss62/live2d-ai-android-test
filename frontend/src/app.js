@@ -64,6 +64,16 @@ const SWAY_FACE_YAW_ACTIONS = new Set([
 ]);
 const SWAY_FACE_YAW_GAIN = .8;
 const SWAY_FACE_YAW_LIMIT = 24;
+const EMOTION_FACE_GAIN = 1.65;
+const EMOTION_POSE_GAIN = 1.3;
+const EMOTION_FACE_KEYS = new Set([
+  'eye_l_open', 'eye_r_open', 'eye_l_smile', 'eye_r_smile', 'eye_x', 'eye_y',
+  'brow_l_y', 'brow_r_y', 'brow_l_angle', 'brow_r_angle',
+  'mouth_open', 'mouth_form', 'mouth_pucker', 'cheek',
+  'tears_l', 'tears_r', 'dark', 'daze',
+]);
+const EMOTION_POSE_KEYS = new Set(['head_x', 'head_y', 'head_z']);
+const EMOTION_PARAMETER_BASELINES = { eye_l_open: 1, eye_r_open: 1 };
 
 const EMOTIONS = {
   neutral: { params: { eye_l_open: 1, eye_r_open: 1, mouth_form: 0, cheek: 0 }, idleAmp: 1, idleSpeed: 1, flutter: .08 },
@@ -306,6 +316,9 @@ const indexCache = new Map();
 const rawIndexCache = new Map();
 const activePointers = new Map();
 const currentEmotionValues = {};
+const desiredAppearancePresets = new Set();
+const appearancePresetStates = new Map();
+const appearancePresetLoads = new Map();
 const TRANSFORM_STORAGE_KEY = 'live2d-stage-transform-v1';
 const INTERACTION_STORAGE_KEY = 'live2d-stage-interaction-v1';
 
@@ -376,6 +389,142 @@ function write(alias, value) {
     }
   } catch { /* older Cubism Core: semantic ranges above are still applied */ }
   core.setParameterValueByIndex(index, next);
+}
+
+function getAmplifiedEmotionParams(profile) {
+  const amplified = {};
+  for (const [key, value] of Object.entries(profile?.params || {})) {
+    if (!Number.isFinite(value)) continue;
+    const baseline = EMOTION_PARAMETER_BASELINES[key] ?? 0;
+    if (EMOTION_FACE_KEYS.has(key)) {
+      amplified[key] = baseline + (value - baseline) * EMOTION_FACE_GAIN;
+    } else if (EMOTION_POSE_KEYS.has(key)) {
+      amplified[key] = baseline + (value - baseline) * EMOTION_POSE_GAIN;
+    } else {
+      amplified[key] = value;
+    }
+  }
+  return amplified;
+}
+
+async function loadAppearancePreset(name) {
+  if (appearancePresetStates.has(name)) return appearancePresetStates.get(name);
+  if (appearancePresetLoads.has(name)) return appearancePresetLoads.get(name);
+
+  const loading = (async () => {
+    const settings = model?.internalModel?.settings;
+    const definition = settings?.expressions?.find((item) => item.Name === name);
+    if (!definition?.File || typeof settings.resolveURL !== 'function') {
+      throw new Error(`找不到外观预设：${name}`);
+    }
+    const response = await fetch(settings.resolveURL(definition.File));
+    if (!response.ok) throw new Error(`外观预设读取失败：${name} (${response.status})`);
+    const json = await response.json();
+    const parameters = (json.Parameters || []).filter((item) => (
+      typeof item.Id === 'string' && Number.isFinite(Number(item.Value))
+    )).map((item) => ({
+      id: item.Id,
+      value: Number(item.Value),
+      blend: String(item.Blend || 'Add').toLowerCase(),
+    }));
+    if (!parameters.length) throw new Error(`外观预设没有可用参数：${name}`);
+    const state = {
+      name,
+      parameters,
+      fadeIn: Math.max(.05, Number(json.FadeInTime) || .35),
+      fadeOut: Math.max(.05, Number(json.FadeOutTime) || .3),
+      weight: 0,
+      target: desiredAppearancePresets.has(name) ? 1 : 0,
+    };
+    appearancePresetStates.set(name, state);
+    return state;
+  })().catch((error) => {
+    console.error(error);
+    desiredAppearancePresets.delete(name);
+    window.AndroidStage?.onInteraction?.(`外观预设加载失败：${name}`);
+    throw error;
+  }).finally(() => appearancePresetLoads.delete(name));
+
+  appearancePresetLoads.set(name, loading);
+  return loading;
+}
+
+async function setAppearancePresetActive(name, active) {
+  if (!name) return false;
+  if (active) desiredAppearancePresets.add(name);
+  else desiredAppearancePresets.delete(name);
+
+  const existing = appearancePresetStates.get(name);
+  if (existing) {
+    existing.target = active ? 1 : 0;
+    return active;
+  }
+  if (!active) return false;
+  const state = await loadAppearancePreset(name);
+  state.target = desiredAppearancePresets.has(name) ? 1 : 0;
+  return state.target === 1;
+}
+
+async function applyAppearancePresetSet(names) {
+  const next = new Set(Array.isArray(names) ? names.filter((name) => typeof name === 'string') : []);
+  desiredAppearancePresets.clear();
+  for (const name of next) desiredAppearancePresets.add(name);
+  for (const state of appearancePresetStates.values()) {
+    state.target = desiredAppearancePresets.has(state.name) ? 1 : 0;
+  }
+  await Promise.allSettled([...desiredAppearancePresets].map((name) => setAppearancePresetActive(name, true)));
+  return [...desiredAppearancePresets];
+}
+
+function clearAllAppearancePresets(immediate = false) {
+  desiredAppearancePresets.clear();
+  for (const state of appearancePresetStates.values()) {
+    state.target = 0;
+    if (immediate) state.weight = 0;
+  }
+}
+
+function updateAppearanceFades(dt) {
+  for (const state of appearancePresetStates.values()) {
+    const duration = state.target ? state.fadeIn : state.fadeOut;
+    const step = dt / duration;
+    state.weight = state.target
+      ? Math.min(1, state.weight + step)
+      : Math.max(0, state.weight - step);
+  }
+}
+
+function applyActiveAppearancePresets() {
+  if (!core) return;
+  const values = new Map();
+  for (const state of appearancePresetStates.values()) {
+    if (state.weight <= .0001) continue;
+    for (const parameter of state.parameters) {
+      const index = findRawIndex(parameter.id);
+      if (index < 0) continue;
+      let current = values.get(index);
+      if (!Number.isFinite(current)) {
+        try { current = core.getParameterValueByIndex(index); } catch { continue; }
+      }
+      if (parameter.blend === 'multiply') {
+        current *= 1 + (parameter.value - 1) * state.weight;
+      } else if (parameter.blend === 'overwrite') {
+        current += (parameter.value - current) * state.weight;
+      } else {
+        current += parameter.value * state.weight;
+      }
+      values.set(index, current);
+    }
+  }
+
+  for (const [index, value] of values) {
+    let next = value;
+    try {
+      next = Math.max(core.getParameterMinimumValue(index),
+        Math.min(core.getParameterMaximumValue(index), next));
+      core.setParameterValueByIndex(index, next);
+    } catch { /* invalid parameter in a third-party preset: skip it */ }
+  }
 }
 
 function loadSavedTransform() {
@@ -727,7 +876,7 @@ function resolveDirectedAction(intent, emotion) {
 }
 
 function updateEmotion(dt) {
-  const target = (EMOTIONS[emotionName] || EMOTIONS.neutral).params;
+  const target = getAmplifiedEmotionParams(EMOTIONS[emotionName] || EMOTIONS.neutral);
   const keys = new Set([...Object.keys(currentEmotionValues), ...Object.keys(target)]);
   const blend = 1 - Math.exp(-dt / .28);
   for (const key of keys) {
@@ -920,6 +1069,7 @@ function runPerformanceFrame() {
     : 1 / 60;
   lastPerformanceUpdateAt = now;
   tick(dt);
+  updateAppearanceFades(dt);
 }
 
 function limitSwayFaceYaw() {
@@ -964,6 +1114,7 @@ async function start() {
   // pose during the same frame instead of receiving it one frame too late.
   model.internalModel.on('afterMotionUpdate', runPerformanceFrame);
   model.internalModel.on('beforeModelUpdate', limitSwayFaceYaw);
+  model.internalModel.on('beforeModelUpdate', applyActiveAppearancePresets);
   setStatus('');
 }
 
@@ -997,6 +1148,19 @@ window.live2dStage = {
   clearExpression() {
     const manager = model?.internalModel?.motionManager?.expressionManager;
     manager?.resetExpression?.();
+  },
+  setAppearancePreset(name, active = true) {
+    return setAppearancePresetActive(name, Boolean(active));
+  },
+  setAppearancePresets(names) {
+    return applyAppearancePresetSet(names);
+  },
+  clearAppearancePresets(immediate = false) {
+    clearAllAppearancePresets(Boolean(immediate));
+    return [];
+  },
+  getActiveAppearancePresets() {
+    return [...desiredAppearancePresets];
   },
   testMotion(group, index) {
     if (!model || !group || !Number.isFinite(Number(index))) return false;
@@ -1035,6 +1199,7 @@ window.live2dStage = {
     actionTime = 0;
     interactionActionTime = 0;
     this.clearExpression();
+    this.clearAppearancePresets();
   },
   setTouchFollowLevel(level) {
     touchFollowLevel = TOUCH_FOLLOW_LEVELS[level] ? level : 'vivid';

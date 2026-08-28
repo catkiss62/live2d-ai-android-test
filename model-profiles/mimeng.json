@@ -31,6 +31,9 @@
   },
   "performance": {
     "actionPoseGain": 2,
+    "emotionFaceDifferenceGain": 1.65,
+    "emotionHeadPoseGain": 1.3,
+    "amplifyZipExpressions": false,
     "defaultTouchFollowLevel": "vivid",
     "touchFollowLevels": {
       "standard": {"eyeX": 0.9, "eyeY": 0.72, "headX": 24, "headY": 20, "headZ": 18, "bodyX": 4.8, "bodyY": 0.58, "bodyZ": 3.8},
@@ -51,6 +54,13 @@
     "gain": 0.8,
     "absoluteLimit": 24,
     "preservePhysicsInputAndBodyMotion": true
+  },
+  "appearancePresets": {
+    "detectedCount": 35,
+    "mode": "persistent-stacked-toggle",
+    "preserveMultiParameterPreset": true,
+    "persistActiveNames": true,
+    "deviceVerified": false
   },
   "quirks": [
     "ParamAngleX2/Y2/Z2 feed extensive physics and must be preferred.",
