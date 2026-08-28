@@ -82,7 +82,10 @@ public class MainActivity extends AppCompatActivity {
             {"惊讶一跳", "blink_surprised"}, {"叹气", "sigh"}, {"撅嘴", "pout"},
             {"开心蹦跶", "excited_bounce"}, {"倾听姿态", "listening"},
             {"环顾四周", "look_around"}, {"轻轻摇摆", "soft_sway"},
-            {"低头再抬起", "look_down_up"}
+            {"低头再抬起", "look_down_up"}, {"轻点头", "small_nod"},
+            {"自然歪头", "head_tilt_idle"}, {"侧目观察", "side_look"},
+            {"重心移动", "weight_shift"}, {"轻靠近", "gentle_lean"},
+            {"叹气下沉", "sigh_sink"}, {"慢眨眼", "slow_blink"}
     };
     private static final String[][] EMOTION_TESTS = {
             {"正常", "neutral"}, {"开心", "happy"}, {"难过", "sad"},
@@ -215,7 +218,7 @@ public class MainActivity extends AppCompatActivity {
         statusText.setTextColor(Color.rgb(230, 218, 250));
         statusText.setTextSize(11);
         statusText.setMaxLines(2);
-        statusText.setText("v0.2.0 · 等待导入");
+        statusText.setText("v0.2.1 · 等待导入");
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         statusLp.setMarginStart(dp(6));
         toolbar.addView(statusText, statusLp);
@@ -352,7 +355,7 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(12), dp(10), dp(12), dp(10));
-        panel.setBackground(rounded(Color.argb(205, 27, 20, 41), 18));
+        panel.setBackground(rounded(Color.argb(82, 27, 20, 41), 18));
         panel.setVisibility(View.GONE);
         panel.setClickable(true);
 
@@ -370,7 +373,7 @@ public class MainActivity extends AppCompatActivity {
         panel.addView(header);
 
         TextView hint = new TextView(this);
-        hint.setText("面板为半透明，可直接观察动作；ZIP预设按文件名自动登记。实际动作文件与外观预设会分开显示。");
+        hint.setText("轻透明文字面板，可直接观察动作；ZIP预设按文件名自动登记。实际动作文件与外观预设会分开显示。");
         hint.setTextColor(Color.rgb(207, 194, 224));
         hint.setTextSize(11);
         hint.setPadding(0, dp(4), 0, dp(6));
@@ -501,7 +504,7 @@ public class MainActivity extends AppCompatActivity {
         note.setTextColor(Color.rgb(205, 193, 220));
         note.setTextSize(12);
         note.setPadding(dp(4), dp(9), dp(4), dp(7));
-        note.setBackground(rounded(Color.argb(105, 70, 54, 86), 10));
+        note.setBackground(rounded(Color.argb(38, 70, 54, 86), 10));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.setMargins(dp(2), dp(4), dp(2), dp(4));
@@ -517,7 +520,8 @@ public class MainActivity extends AppCompatActivity {
         button.setMinWidth(0);
         button.setMinimumWidth(0);
         button.setPadding(dp(5), 0, dp(5), 0);
-        button.setBackground(rounded(Color.argb(142, 117, 80, 148), 10));
+        button.setBackgroundColor(Color.TRANSPARENT);
+        button.setShadowLayer(2f, 0f, 1f, Color.BLACK);
         return button;
     }
 
@@ -717,6 +721,7 @@ public class MainActivity extends AppCompatActivity {
         addUserMessage(text);
         setSending(true);
         setStatus("DeepSeek V4 Flash · High 思考中…");
+        evaluateStage("window.live2dStage&&window.live2dStage.setFocusedInteraction(true);");
 
         executor.execute(() -> {
             try {
@@ -724,11 +729,13 @@ public class MainActivity extends AppCompatActivity {
                 runOnUiThread(() -> {
                     addAssistantMessage(reply.text, true);
                     applyLive2D(reply.emotion, reply.action);
+                    evaluateStage("window.live2dStage&&window.live2dStage.setFocusedInteraction(false);");
                     setStatus("回复完成 · " + reply.emotion + " · " + reply.action);
                     setSending(false);
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
+                    evaluateStage("window.live2dStage&&window.live2dStage.setFocusedInteraction(false);");
                     addAssistantMessage("请求失败：" + readableError(e), false);
                     setStatus("API请求失败");
                     setSending(false);
