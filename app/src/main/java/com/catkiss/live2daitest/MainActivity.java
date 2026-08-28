@@ -21,6 +21,7 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -30,6 +31,9 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewClientCompat;
 
@@ -92,6 +96,8 @@ public class MainActivity extends AppCompatActivity {
     private EditText messageInput;
     private Button sendButton;
     private TextView statusText;
+    private FrameLayout loadingOverlay;
+    private TextView loadingText;
 
     private final ActivityResultLauncher<String[]> modelZipPicker = registerForActivityResult(
             new ActivityResultContracts.OpenDocument(), this::onModelZipPicked);
@@ -153,7 +159,7 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout toolbar = new LinearLayout(this);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
         toolbar.setGravity(Gravity.CENTER_VERTICAL);
-        toolbar.setPadding(dp(8), dp(6), dp(8), dp(6));
+        toolbar.setPadding(dp(8), dp(4), dp(8), dp(4));
         toolbar.setBackgroundColor(Color.argb(175, 21, 16, 32));
 
         Button modelButton = compactButton("导入模型ZIP");
@@ -185,20 +191,62 @@ public class MainActivity extends AppCompatActivity {
         settingsPanel = buildSettingsPanel();
         FrameLayout.LayoutParams settingsLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP);
-        settingsLp.topMargin = dp(52);
+        settingsLp.topMargin = dp(46);
         settingsLp.leftMargin = dp(8);
         settingsLp.rightMargin = dp(8);
         root.addView(settingsPanel, settingsLp);
 
         LinearLayout chatPanel = buildChatPanel();
         FrameLayout.LayoutParams chatLp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(285), Gravity.BOTTOM);
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(245), Gravity.BOTTOM);
         chatLp.leftMargin = dp(8);
         chatLp.rightMargin = dp(8);
         chatLp.bottomMargin = dp(8);
         root.addView(chatPanel, chatLp);
 
+        loadingOverlay = buildLoadingOverlay();
+        root.addView(loadingOverlay, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        ViewCompat.setOnApplyWindowInsetsListener(root, (view, windowInsets) -> {
+            Insets bars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            return windowInsets;
+        });
+        ViewCompat.requestApplyInsets(root);
+
         setContentView(root);
+    }
+
+    private FrameLayout buildLoadingOverlay() {
+        FrameLayout overlay = new FrameLayout(this);
+        overlay.setVisibility(View.GONE);
+        overlay.setClickable(true);
+        overlay.setFocusable(true);
+        overlay.setBackgroundColor(Color.argb(150, 8, 5, 14));
+
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setGravity(Gravity.CENTER);
+        card.setPadding(dp(24), dp(20), dp(24), dp(20));
+        card.setBackground(rounded(Color.argb(242, 39, 29, 55), 18));
+
+        ProgressBar progress = new ProgressBar(this);
+        card.addView(progress, new LinearLayout.LayoutParams(dp(46), dp(46)));
+        loadingText = new TextView(this);
+        loadingText.setTextColor(Color.WHITE);
+        loadingText.setTextSize(14);
+        loadingText.setGravity(Gravity.CENTER);
+        loadingText.setPadding(0, dp(12), 0, 0);
+        card.addView(loadingText, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
+        cardLp.leftMargin = dp(28);
+        cardLp.rightMargin = dp(28);
+        overlay.addView(card, cardLp);
+        return overlay;
     }
 
     private LinearLayout buildSettingsPanel() {
@@ -270,7 +318,7 @@ public class MainActivity extends AppCompatActivity {
         button.setPadding(dp(9), 0, dp(9), 0);
         button.setBackground(rounded(Color.argb(205, 104, 72, 148), 12));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, dp(38));
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(34));
         lp.setMarginEnd(dp(5));
         button.setLayoutParams(lp);
         return button;
@@ -302,30 +350,47 @@ public class MainActivity extends AppCompatActivity {
 
     private void onModelZipPicked(Uri uri) {
         if (uri == null) return;
-        setStatus("正在导入模型ZIP…");
+        showLoading("已选择模型，准备导入…");
         executor.execute(() -> {
             try {
+                postLoading("正在清理旧模型…");
                 deleteChildren(modelRoot);
+                postLoading("正在解压模型 ZIP…");
                 unzipSecure(uri, modelRoot);
+                postLoading("正在识别模型和表情…");
                 File modelFile = findFirst(modelRoot, ".model3.json");
                 if (modelFile == null) throw new IOException("ZIP中没有找到 .model3.json");
                 int expressionCount = registerExpressions(modelFile);
+                postLoading("正在优化手机贴图，请耐心等待…");
                 int optimizedTextures = optimizeModelTextures(modelFile);
                 String relative = relativePath(modelRoot, modelFile);
                 prefs.edit().putString("model_path", relative).apply();
                 runOnUiThread(() -> {
-                    setStatus("模型已导入：表情 " + expressionCount + " 个，优化贴图 " + optimizedTextures + " 张");
+                    hideLoading();
+                    String result = "模型导入成功：发现表情 " + expressionCount
+                            + " 个，优化贴图 " + optimizedTextures + " 张";
+                    setStatus(result);
+                    toastLong(result);
+                    if (!new File(runtimeRoot, "live2dcubismcore.min.js").isFile()) {
+                        addAssistantMessage(result + "。还需要点击“导入Core”选择官方 live2dcubismcore.min.js，角色才会显示。", false);
+                    }
                     loadStage();
                 });
-            } catch (Exception e) {
-                runOnUiThread(() -> setStatus("模型导入失败：" + readableError(e)));
+            } catch (Throwable e) {
+                runOnUiThread(() -> {
+                    hideLoading();
+                    String error = "模型导入失败：" + readableError(e);
+                    setStatus(error);
+                    toastLong(error);
+                    addAssistantMessage(error, false);
+                });
             }
         });
     }
 
     private void onCorePicked(Uri uri) {
         if (uri == null) return;
-        setStatus("正在导入Cubism Core…");
+        showLoading("正在导入 Cubism Core…");
         executor.execute(() -> {
             try {
                 File target = new File(runtimeRoot, "live2dcubismcore.min.js");
@@ -346,11 +411,19 @@ public class MainActivity extends AppCompatActivity {
                     throw new IOException("所选文件不像 live2dcubismcore.min.js");
                 }
                 runOnUiThread(() -> {
+                    hideLoading();
                     setStatus("Cubism Core 已导入");
+                    toastLong("Cubism Core 导入成功");
                     loadStage();
                 });
-            } catch (Exception e) {
-                runOnUiThread(() -> setStatus("Core导入失败：" + readableError(e)));
+            } catch (Throwable e) {
+                runOnUiThread(() -> {
+                    hideLoading();
+                    String error = "Core导入失败：" + readableError(e);
+                    setStatus(error);
+                    toastLong(error);
+                    addAssistantMessage(error, false);
+                });
             }
         });
     }
@@ -573,6 +646,9 @@ public class MainActivity extends AppCompatActivity {
             int largest = Math.max(bounds.outWidth, bounds.outHeight);
             if (largest <= MAX_MOBILE_TEXTURE_SIZE || largest <= 0) continue;
 
+            postLoading("正在优化贴图 " + (i + 1) + "/" + textures.length()
+                    + "\n首次导入可能需要一两分钟");
+
             int sample = 1;
             while (largest / sample > MAX_MOBILE_TEXTURE_SIZE) sample *= 2;
             BitmapFactory.Options options = new BitmapFactory.Options();
@@ -694,6 +770,20 @@ public class MainActivity extends AppCompatActivity {
         statusText.setText(text);
     }
 
+    private void showLoading(String text) {
+        loadingText.setText(text);
+        loadingOverlay.setVisibility(View.VISIBLE);
+        setStatus(text);
+    }
+
+    private void postLoading(String text) {
+        runOnUiThread(() -> showLoading(text));
+    }
+
+    private void hideLoading() {
+        loadingOverlay.setVisibility(View.GONE);
+    }
+
     private String readAll(InputStream input) throws IOException {
         if (input == null) return "";
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
@@ -736,6 +826,10 @@ public class MainActivity extends AppCompatActivity {
 
     private void toast(String text) {
         Toast.makeText(this, text, Toast.LENGTH_SHORT).show();
+    }
+
+    private void toastLong(String text) {
+        Toast.makeText(this, text, Toast.LENGTH_LONG).show();
     }
 
     @Override
