@@ -18,8 +18,8 @@ android {
         applicationId 'com.catkiss.live2daitest'
         minSdk 26
         targetSdk 34
-        versionCode 8
-        versionName '0.2.2-test'
+        versionCode 9
+        versionName '0.2.3-test'
     }
 
     buildTypes {
