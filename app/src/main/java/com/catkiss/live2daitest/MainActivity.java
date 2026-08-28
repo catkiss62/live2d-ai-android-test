@@ -77,7 +77,9 @@ public class MainActivity extends AppCompatActivity {
             "lean_back", "blink_surprised", "sigh", "pout", "excited_bounce",
             "look_around", "soft_sway", "look_down_up", "small_nod",
             "head_tilt_idle", "side_look", "weight_shift", "gentle_lean",
-            "sigh_sink", "slow_blink", "wind_sway_soft"
+            "sigh_sink", "slow_blink", "wind_sway_soft",
+            "agree", "disagree", "curious", "approach", "withdraw",
+            "surprised_react", "sigh_react", "pout_react", "celebrate", "calm_react"
     ));
     private static final String[][] ACTION_TESTS = {
             {"点头", "nod"}, {"摇头", "shake_head"}, {"歪头", "tilt_head"},
@@ -90,7 +92,8 @@ public class MainActivity extends AppCompatActivity {
             {"重心移动", "weight_shift"}, {"轻靠近", "gentle_lean"},
             {"叹气下沉", "sigh_sink"}, {"慢眨眼", "slow_blink"},
             {"柔风摆动", "wind_sway_soft"}, {"明显风摆", "wind_sway_medium"},
-            {"展示级大摆", "wind_sway_showcase"}, {"视频式环绕", "showcase_orbit"}
+            {"展示级大摆", "wind_sway_showcase"}, {"视频式环绕", "showcase_orbit"},
+            {"摸头常规", "head_pat"}, {"摸头疑惑彩蛋", "head_pat_confused"}
     };
     private static final String[][] EMOTION_TESTS = {
             {"正常", "neutral"}, {"开心", "happy"}, {"难过", "sad"},
@@ -123,6 +126,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView loadingText;
     private boolean modelAdjustmentEnabled;
     private boolean autonomousIdleEnabled = true;
+    private String touchFollowLevel;
     private final List<String> expressionPresets = new ArrayList<>();
     private final List<MotionPreset> motionPresets = new ArrayList<>();
 
@@ -135,6 +139,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        touchFollowLevel = prefs.getString("touch_follow_level", "vivid");
         modelRoot = new File(getFilesDir(), "live2d-model");
         runtimeRoot = new File(getFilesDir(), "cubism-runtime");
         //noinspection ResultOfMethodCallIgnored
@@ -223,7 +228,7 @@ public class MainActivity extends AppCompatActivity {
         statusText.setTextColor(Color.rgb(230, 218, 250));
         statusText.setTextSize(11);
         statusText.setMaxLines(2);
-        statusText.setText("v0.2.3 · 等待导入");
+        statusText.setText("v0.3.0 · 等待导入");
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         statusLp.setMarginStart(dp(6));
         toolbar.addView(statusText, statusLp);
@@ -378,7 +383,7 @@ public class MainActivity extends AppCompatActivity {
         panel.addView(header);
 
         TextView hint = new TextView(this);
-        hint.setText("极轻透明文字面板；参数动作的头、身和视线位移已统一放大至 2 倍。ZIP预设仍按文件名自动登记。");
+        hint.setText("动作位移 2 倍；新增三档跟随、摸头互动和语义动作导演。新效果均等待本轮实机确认。");
         hint.setTextColor(Color.rgb(207, 194, 224));
         hint.setTextSize(11);
         hint.setPadding(0, dp(4), 0, dp(6));
@@ -411,6 +416,23 @@ public class MainActivity extends AppCompatActivity {
                     + autonomousIdleEnabled + ");");
             setStatus(autonomousIdleEnabled ? "自主待机已开启" : "自主待机已暂停");
             rebuildTestPanel();
+        }));
+        controls.add(new PanelItem("跟随：" + touchFollowLabel(), () -> {
+            touchFollowLevel = nextTouchFollowLevel(touchFollowLevel);
+            prefs.edit().putString("touch_follow_level", touchFollowLevel).apply();
+            evaluateStage("window.live2dStage&&window.live2dStage.setTouchFollowLevel("
+                    + JSONObject.quote(touchFollowLevel) + ");");
+            setStatus("触屏跟随力度：" + touchFollowLabel());
+            rebuildTestPanel();
+        }));
+        controls.add(new PanelItem("校准摸头区域", () -> {
+            testPanel.setVisibility(View.GONE);
+            evaluateStage("window.live2dStage&&window.live2dStage.beginHeadZoneCalibration();");
+            toastLong("依次点击头部左上角和右下角");
+        }));
+        controls.add(new PanelItem("重置摸头区域", () -> {
+            evaluateStage("window.live2dStage&&window.live2dStage.resetHeadZone();");
+            setStatus("摸头区域已恢复迷梦默认值");
         }));
         addPanelSection("控制", controls);
 
@@ -472,6 +494,18 @@ public class MainActivity extends AppCompatActivity {
         if (expressionPresets.isEmpty()) {
             addPanelNote("ZIP预设", "尚未导入模型，或模型中没有 .exp3.json 预设。");
         }
+    }
+
+    private String touchFollowLabel() {
+        if ("standard".equals(touchFollowLevel)) return "标准";
+        if ("extreme".equals(touchFollowLevel)) return "极限";
+        return "明显";
+    }
+
+    private String nextTouchFollowLevel(String current) {
+        if ("standard".equals(current)) return "vivid";
+        if ("vivid".equals(current)) return "extreme";
+        return "standard";
     }
 
     private void addPanelSection(String title, List<PanelItem> items) {
@@ -836,8 +870,10 @@ public class MainActivity extends AppCompatActivity {
                 {"response_text":"实际回复","emotion_tag":"情绪","action_tag":"动作"}
 
                 emotion_tag只能选择：neutral, happy, sad, excited, shy, angry, surprised, thinking, empathy, love, confused
-                action_tag只能选择：none, nod, shake_head, tilt_head, lean_forward, lean_back, blink_surprised, sigh, pout, excited_bounce, look_around, soft_sway, look_down_up, small_nod, head_tilt_idle, side_look, weight_shift, gentle_lean, sigh_sink, slow_blink, wind_sway_soft
-                动作只在自然时使用，大部分普通回复选择none。不要输出代码块或JSON以外的文字。
+                action_tag只表达动作意图，程序会自行选择具体动作：
+                none=不指定；agree=赞同确认；disagree=拒绝不同意；curious=好奇疑惑；approach=感兴趣靠近；withdraw=吃惊或不舒服而退开；surprised_react=明显惊讶；sigh_react=叹气疲惫；pout_react=委屈不满；celebrate=开心庆祝；calm_react=温和安静回应。
+                action_tag只能选择：none, agree, disagree, curious, approach, withdraw, surprised_react, sigh_react, pout_react, celebrate, calm_react
+                普通回复可以选择none；程序会结合emotion_tag补充低频自然动作。不要输出代码块或JSON以外的文字。
                 """;
     }
 
@@ -1261,7 +1297,18 @@ public class MainActivity extends AppCompatActivity {
     private final class StageBridge {
         @JavascriptInterface
         public void onStageStatus(String status) {
-            runOnUiThread(() -> setStatus(status));
+            runOnUiThread(() -> {
+                setStatus(status);
+                if ("模型已就绪".equals(status)) {
+                    evaluateStage("window.live2dStage&&window.live2dStage.setTouchFollowLevel("
+                            + JSONObject.quote(touchFollowLevel) + ");");
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void onInteraction(String interaction) {
+            runOnUiThread(() -> setStatus(interaction));
         }
     }
 }
