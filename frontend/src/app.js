@@ -24,17 +24,96 @@ const PARAM_ALIASES = {
 };
 
 const EMOTIONS = {
-  neutral: { eye_l_open: 1, eye_r_open: 1, mouth_form: 0, cheek: 0 },
-  happy: { eye_l_open: .72, eye_r_open: .72, eye_l_smile: .75, eye_r_smile: .75, mouth_form: .8, cheek: .25 },
-  sad: { eye_l_open: .55, eye_r_open: .55, eye_y: -.25, brow_l_y: -.35, brow_r_y: -.35, brow_l_angle: -.3, brow_r_angle: .3, mouth_form: -.55, head_y: -4 },
-  excited: { eye_l_open: 1.25, eye_r_open: 1.25, eye_l_smile: .45, eye_r_smile: .45, brow_l_y: .6, brow_r_y: .6, mouth_form: .95, cheek: .35 },
-  shy: { eye_l_open: .55, eye_r_open: .55, eye_l_smile: .35, eye_r_smile: .35, eye_x: -.3, eye_y: -.18, mouth_form: .2, cheek: .85, head_z: -8, head_y: -3 },
-  angry: { eye_l_open: .75, eye_r_open: .75, brow_l_y: -.8, brow_r_y: -.8, brow_l_angle: -.55, brow_r_angle: .55, mouth_form: -.7, dark: .35 },
-  surprised: { eye_l_open: 1.45, eye_r_open: 1.45, brow_l_y: .8, brow_r_y: .8, mouth_open: .55, mouth_form: .1, head_y: 3 },
-  thinking: { eye_l_open: .72, eye_r_open: .72, eye_x: -.2, eye_y: .2, brow_l_y: .1, brow_r_y: -.05, mouth_form: .05, head_z: -7 },
-  empathy: { eye_l_open: .82, eye_r_open: .82, eye_l_smile: .25, eye_r_smile: .25, brow_l_y: -.2, brow_r_y: -.2, mouth_form: .35, head_z: 4 },
-  love: { eye_l_open: .7, eye_r_open: .7, eye_l_smile: .85, eye_r_smile: .85, mouth_form: .8, cheek: 1, head_z: 4 },
-  confused: { eye_l_open: .75, eye_r_open: 1.05, eye_x: .25, brow_l_y: -.25, brow_r_y: .45, mouth_form: -.2, head_z: -7 },
+  neutral: { params: { eye_l_open: 1, eye_r_open: 1, mouth_form: 0, cheek: 0 }, idleAmp: 1, idleSpeed: 1, flutter: .08 },
+  happy: { params: { eye_l_open: .72, eye_r_open: .72, eye_l_smile: .75, eye_r_smile: .75, mouth_form: .8, cheek: .25 }, idleAmp: 1.3, idleSpeed: 1.2, flutter: .15 },
+  sad: { params: { eye_l_open: .55, eye_r_open: .55, eye_y: -.25, brow_l_y: -.35, brow_r_y: -.35, brow_l_angle: -.3, brow_r_angle: .3, mouth_form: -.55, head_y: -4 }, idleAmp: .55, idleSpeed: .65, flutter: .05 },
+  excited: { params: { eye_l_open: 1.25, eye_r_open: 1.25, eye_l_smile: .45, eye_r_smile: .45, brow_l_y: .6, brow_r_y: .6, mouth_form: .95, cheek: .35 }, idleAmp: 1.75, idleSpeed: 1.45, flutter: .18 },
+  shy: { params: { eye_l_open: .55, eye_r_open: .55, eye_l_smile: .35, eye_r_smile: .35, eye_x: -.3, eye_y: -.18, mouth_form: .2, cheek: .85, head_z: -8, head_y: -3 }, idleAmp: .7, idleSpeed: .8, flutter: .1 },
+  angry: { params: { eye_l_open: .75, eye_r_open: .75, brow_l_y: -.8, brow_r_y: -.8, brow_l_angle: -.55, brow_r_angle: .55, mouth_form: -.7, dark: .35 }, idleAmp: 1.2, idleSpeed: 1.15, flutter: .12 },
+  surprised: { params: { eye_l_open: 1.45, eye_r_open: 1.45, brow_l_y: .8, brow_r_y: .8, mouth_open: .55, mouth_form: .1, head_y: 3 }, idleAmp: 1.4, idleSpeed: 1.3, flutter: .16 },
+  thinking: { params: { eye_l_open: .72, eye_r_open: .72, eye_x: -.2, eye_y: .2, brow_l_y: .1, brow_r_y: -.05, mouth_form: .05, head_z: -7 }, idleAmp: .7, idleSpeed: .8, flutter: .08 },
+  empathy: { params: { eye_l_open: .82, eye_r_open: .82, eye_l_smile: .25, eye_r_smile: .25, brow_l_y: -.2, brow_r_y: -.2, mouth_form: .35, head_z: 4 }, idleAmp: .85, idleSpeed: .9, flutter: .07 },
+  love: { params: { eye_l_open: .7, eye_r_open: .7, eye_l_smile: .85, eye_r_smile: .85, mouth_form: .8, cheek: 1, head_z: 4 }, idleAmp: 1.2, idleSpeed: 1.05, flutter: .12 },
+  confused: { params: { eye_l_open: .75, eye_r_open: 1.05, eye_x: .25, brow_l_y: -.25, brow_r_y: .45, mouth_form: -.2, head_z: -7 }, idleAmp: .9, idleSpeed: .9, flutter: .1 },
+};
+
+const ACTION_LIBRARY = {
+  nod: { duration: 1.35, keyframes: [
+    { t: 0, head_y: 0, body_y: 0, head_z: 0, body_x: 0 },
+    { t: .14, head_y: 4, body_y: 1.4, head_z: 1.5, body_x: .6 },
+    { t: .4, head_y: -20, body_y: -3.8, head_z: -2.5, body_x: -.9 },
+    { t: .68, head_y: 8.5, body_y: 4.8, head_z: 2, body_x: .7 },
+    { t: .96, head_y: -8.5, body_y: -1.4, head_z: -.9, body_x: -.3 },
+    { t: 1.16, head_y: 1.8, body_y: .7, head_z: .35, body_x: .12 },
+    { t: 1.35, head_y: 0, body_y: 0, head_z: 0, body_x: 0 },
+  ] },
+  shake_head: { duration: 1.2, keyframes: [
+    { t: 0, head_x: 0, body_x: 0, head_z: 0 }, { t: .12, head_x: 3, body_x: .6, head_z: 1 },
+    { t: .34, head_x: -14, body_x: -2, head_z: -3 }, { t: .58, head_x: 13, body_x: 1.8, head_z: 2.5 },
+    { t: .82, head_x: -9, body_x: -1, head_z: -1.5 }, { t: 1.02, head_x: 4, body_x: .4, head_z: .8 },
+    { t: 1.2, head_x: 0, body_x: 0, head_z: 0 },
+  ] },
+  tilt_head: { duration: 1.5, keyframes: [
+    { t: 0, head_z: 0, body_x: 0, body_y: 0 }, { t: .7, head_z: 16, body_x: 1.2, body_y: .8 },
+    { t: 1.2, head_z: 5, body_x: .5, body_y: .2 }, { t: 1.5, head_z: 0, body_x: 0, body_y: 0 },
+  ] },
+  lean_forward: { duration: 2, keyframes: [
+    { t: 0, body_y: 0, head_y: 0, head_z: 0 }, { t: .2, body_y: -1.5, head_y: 1, head_z: -1 },
+    { t: .78, body_y: 18, head_y: -4, head_z: 2 }, { t: 1.18, body_y: 22, head_y: -5.5, head_z: 2.5 },
+    { t: 1.52, body_y: 11, head_y: -2, head_z: 1 }, { t: 1.78, body_y: 4, head_y: -.6, head_z: .2 },
+    { t: 2, body_y: 0, head_y: 0, head_z: 0 },
+  ] },
+  lean_back: { duration: 1.25, keyframes: [
+    { t: 0, body_y: 0, head_y: 0, head_z: 0 }, { t: .14, body_y: 1, head_y: -.8, head_z: .6 },
+    { t: .48, body_y: -4.5, head_y: 3.5, head_z: -1.6 }, { t: .78, body_y: -6.2, head_y: 4.6, head_z: -2 },
+    { t: 1, body_y: -2.8, head_y: 1.8, head_z: -.7 }, { t: 1.25, body_y: 0, head_y: 0, head_z: 0 },
+  ] },
+  blink_surprised: { duration: .88, keyframes: [
+    { t: 0, head_y: 0, body_y: 0, eye_l_open: 0, eye_r_open: 0, brow_l_y: 0, brow_r_y: 0, mouth_open: 0 },
+    { t: .16, head_y: 2.5, body_y: 2, eye_l_open: .08, eye_r_open: .08, brow_l_y: .12, brow_r_y: .12, mouth_open: .02 },
+    { t: .36, head_y: -5.5, body_y: -6, eye_l_open: .42, eye_r_open: .42, brow_l_y: .82, brow_r_y: .82, mouth_open: .22 },
+    { t: .58, head_y: 1.8, body_y: 1.4, eye_l_open: .2, eye_r_open: .2, brow_l_y: .38, brow_r_y: .38, mouth_open: .08 },
+    { t: .88, head_y: 0, body_y: 0, eye_l_open: 0, eye_r_open: 0, brow_l_y: 0, brow_r_y: 0, mouth_open: 0 },
+  ] },
+  sigh: { duration: 2, keyframes: [
+    { t: 0, head_y: 0, head_x: 0, eye_l_open: 0, eye_r_open: 0, mouth_open: 0, body_y: 0 },
+    { t: .3, head_y: -4, head_x: 5, eye_l_open: -.2, eye_r_open: -.2, mouth_open: .25, body_y: -1 },
+    { t: 1, head_y: -6, head_x: -5, eye_l_open: -.3, eye_r_open: -.3, mouth_open: .5, body_y: -2.2 },
+    { t: 1.5, head_y: -4, head_x: 5, eye_l_open: -.15, eye_r_open: -.15, mouth_open: .1, body_y: -.9 },
+    { t: 2, head_y: 0, head_x: 0, eye_l_open: 0, eye_r_open: 0, mouth_open: 0, body_y: 0 },
+  ] },
+  pout: { duration: 1.7, keyframes: [
+    { t: 0, mouth_pucker: 0, mouth_form: 0, cheek: 0, head_z: 0, body_x: 0 },
+    { t: .3, mouth_pucker: .45, mouth_form: -.24, cheek: .22, head_z: -2.2, body_x: -.25 },
+    { t: .78, mouth_pucker: 1.38, mouth_form: -.7, cheek: 1.18, head_z: -8.5, body_x: -.9 },
+    { t: 1.16, mouth_pucker: 1.18, mouth_form: -.62, cheek: 1, head_z: -5, body_x: -.45 },
+    { t: 1.42, mouth_pucker: .55, mouth_form: -.26, cheek: .32, head_z: -2, body_x: -.12 },
+    { t: 1.7, mouth_pucker: 0, mouth_form: 0, cheek: 0, head_z: 0, body_x: 0 },
+  ] },
+  excited_bounce: { duration: 2, keyframes: [
+    { t: 0, head_y: 0, body_y: 0, eye_l_smile: .18, eye_r_smile: .18, mouth_form: .18, mouth_open: .04, cheek: .12 },
+    { t: .3, head_y: 5, body_y: 3, eye_l_smile: .45, eye_r_smile: .45, mouth_form: .42, mouth_open: .14, cheek: .28 },
+    { t: .8, head_y: -2, body_y: -5, eye_l_smile: .68, eye_r_smile: .68, mouth_form: .72, mouth_open: .28, cheek: .48 },
+    { t: 1, head_y: 3, body_y: 2, eye_l_smile: .56, eye_r_smile: .56, mouth_form: .56, mouth_open: .18, cheek: .36 },
+    { t: 1.5, head_y: -1, body_y: 1, eye_l_smile: .34, eye_r_smile: .34, mouth_form: .36, mouth_open: .1, cheek: .2 },
+    { t: 2, head_y: 0, body_y: 0, eye_l_smile: 0, eye_r_smile: 0, mouth_form: 0, mouth_open: 0, cheek: 0 },
+  ] },
+  listening: { duration: -1, keyframes: [
+    { t: 0, head_z: 0, head_y: 0 }, { t: .4, head_z: 6, head_y: 2 },
+  ] },
+  look_around: { duration: 3.2, keyframes: [
+    { t: 0, head_x: 0, eye_x: 0, body_x: 0 }, { t: .7, head_x: -8, eye_x: -.55, body_x: -.8 },
+    { t: 1.7, head_x: 9, eye_x: .65, body_x: .9 }, { t: 2.5, head_x: 3, eye_x: .25, body_x: .25 },
+    { t: 3.2, head_x: 0, eye_x: 0, body_x: 0 },
+  ] },
+  soft_sway: { duration: 2.8, keyframes: [
+    { t: 0, head_z: 0, body_x: 0, body_z: 0 }, { t: .8, head_z: -4, body_x: -2.6, body_z: -.8 },
+    { t: 1.7, head_z: 4.5, body_x: 2.8, body_z: .9 }, { t: 2.8, head_z: 0, body_x: 0, body_z: 0 },
+  ] },
+  look_down_up: { duration: 2.5, keyframes: [
+    { t: 0, head_y: 0, eye_y: 0, body_y: 0 }, { t: .8, head_y: -7, eye_y: -.35, body_y: -1.5 },
+    { t: 1.55, head_y: 5, eye_y: .22, body_y: 1 }, { t: 2.5, head_y: 0, eye_y: 0, body_y: 0 },
+  ] },
 };
 
 let app;
@@ -47,14 +126,21 @@ let elapsed = 0;
 let blinkTime = 2.2;
 let naturalModelWidth = 1;
 let naturalModelHeight = 1;
+let layoutReferenceWidth = 0;
+let layoutReferenceHeight = 0;
 let adjustMode = false;
 let modelOffsetX = 0;
 let modelOffsetY = 0;
 let modelScaleMultiplier = 1;
+let autonomousIdleEnabled = true;
+let autonomousActionName = 'none';
+let autonomousActionTime = 0;
+let nextAutonomousActionAt = 5 + Math.random() * 5;
 let lastGestureCenter = null;
 let lastGestureDistance = 0;
 const indexCache = new Map();
 const activePointers = new Map();
+const currentEmotionValues = {};
 const TRANSFORM_STORAGE_KEY = 'live2d-stage-transform-v1';
 
 function setStatus(text) {
@@ -128,8 +214,20 @@ function saveTransform() {
 
 function fitModel() {
   if (!model || !app) return;
-  const width = app.screen.width;
-  const height = app.screen.height;
+  const currentWidth = app.screen.width;
+  const currentHeight = app.screen.height;
+  const widthChanged = layoutReferenceWidth > 0
+    && Math.abs(currentWidth - layoutReferenceWidth) > Math.max(36, layoutReferenceWidth * .16);
+  if (!layoutReferenceWidth || widthChanged) {
+    layoutReferenceWidth = currentWidth;
+    layoutReferenceHeight = currentHeight;
+  } else if (currentHeight > layoutReferenceHeight) {
+    layoutReferenceHeight = currentHeight;
+  }
+
+  // 输入法只会缩短当前 WebView 高度；使用稳定参考高度，避免角色随键盘跳位。
+  const width = layoutReferenceWidth;
+  const height = layoutReferenceHeight;
   const scale = Math.min(width / naturalModelWidth, height / naturalModelHeight)
     * 1.62 * modelScaleMultiplier;
   model.scale.set(scale);
@@ -176,8 +274,8 @@ function installAdjustmentGestures() {
     const metrics = gestureMetrics();
 
     if (previousCenter && metrics.center) {
-      modelOffsetX += (metrics.center.x - previousCenter.x) / Math.max(1, app.screen.width);
-      modelOffsetY += (metrics.center.y - previousCenter.y) / Math.max(1, app.screen.height);
+      modelOffsetX += (metrics.center.x - previousCenter.x) / Math.max(1, layoutReferenceWidth);
+      modelOffsetY += (metrics.center.y - previousCenter.y) / Math.max(1, layoutReferenceHeight);
     }
     if (activePointers.size >= 2 && previousDistance > 0 && metrics.distance > 0) {
       modelScaleMultiplier = Math.min(3, Math.max(.35,
@@ -199,20 +297,84 @@ function installAdjustmentGestures() {
   canvas.addEventListener('lostpointercapture', finishPointer);
 }
 
-function actionOffsets(name, t) {
-  const p = Math.min(t / 1.7, 1);
-  const fade = Math.sin(Math.PI * p);
-  switch (name) {
-    case 'nod': return { head_y: Math.sin(t * 11) * 12 * fade, body_y: Math.sin(t * 11) * 2 * fade };
-    case 'shake_head': return { head_x: Math.sin(t * 12) * 13 * fade, head_z: Math.sin(t * 12) * 2 * fade };
-    case 'tilt_head': return { head_z: Math.sin(Math.PI * p) * 13 };
-    case 'lean_forward': return { body_y: Math.sin(Math.PI * p) * 7, head_y: -Math.sin(Math.PI * p) * 4 };
-    case 'lean_back': return { body_y: -Math.sin(Math.PI * p) * 5, head_y: Math.sin(Math.PI * p) * 4 };
-    case 'sigh': return { head_y: -Math.sin(Math.PI * p) * 6, mouth_open: Math.sin(Math.PI * p) * .35 };
-    case 'pout': return { mouth_form: -Math.sin(Math.PI * p) * .55, mouth_pucker: Math.sin(Math.PI * p), cheek: Math.sin(Math.PI * p) * .35 };
-    case 'excited_bounce': return { body_y: Math.abs(Math.sin(t * 10)) * 7 * fade, head_y: -Math.abs(Math.sin(t * 10)) * 5 * fade };
-    default: return {};
+function interpolateAction(name, time) {
+  const action = ACTION_LIBRARY[name];
+  if (!action) return {};
+  const frames = action.keyframes;
+  if (!frames.length) return {};
+  const sampleTime = action.duration < 0 ? Math.min(time, frames[frames.length - 1].t)
+    : Math.min(time, action.duration);
+  let previous = frames[0];
+  let next = frames[frames.length - 1];
+  for (let i = 0; i < frames.length - 1; i += 1) {
+    if (sampleTime >= frames[i].t && sampleTime <= frames[i + 1].t) {
+      previous = frames[i];
+      next = frames[i + 1];
+      break;
+    }
   }
+  const duration = next.t - previous.t;
+  let progress = duration > 0 ? (sampleTime - previous.t) / duration : 1;
+  progress = Math.max(0, Math.min(1, progress));
+  progress = progress * progress * (3 - 2 * progress);
+  const values = {};
+  const keys = new Set([...Object.keys(previous), ...Object.keys(next)]);
+  keys.delete('t');
+  for (const key of keys) {
+    const from = previous[key] ?? 0;
+    const to = next[key] ?? 0;
+    values[key] = from + (to - from) * progress;
+  }
+  return values;
+}
+
+function addValues(target, source) {
+  for (const [key, value] of Object.entries(source)) {
+    target[key] = (target[key] || 0) + value;
+  }
+}
+
+function updateEmotion(dt) {
+  const target = (EMOTIONS[emotionName] || EMOTIONS.neutral).params;
+  const keys = new Set([...Object.keys(currentEmotionValues), ...Object.keys(target)]);
+  const blend = 1 - Math.exp(-dt / .28);
+  for (const key of keys) {
+    const next = target[key] ?? 0;
+    const current = currentEmotionValues[key] ?? 0;
+    const value = current + (next - current) * blend;
+    if (Math.abs(value) < .0005 && Math.abs(next) < .0005) delete currentEmotionValues[key];
+    else currentEmotionValues[key] = value;
+  }
+  return { ...currentEmotionValues };
+}
+
+function idleOffsets(profile) {
+  const t = elapsed * profile.idleSpeed;
+  const amp = profile.idleAmp;
+  return {
+    head_x: (Math.sin(t * .55) * 2.15 + Math.sin(t * .21 + 1.2) * .85) * amp,
+    head_y: (Math.sin(t * .43 + .7) * 1.25 + Math.sin(t * .19) * .55) * amp,
+    head_z: (Math.sin(t * .31 + 2.1) * 1.15 + Math.sin(t * .13) * .45) * amp,
+    body_x: (Math.sin(t * .36) * 1.5 + Math.sin(t * .17 + 1.4) * .65) * amp,
+    body_y: Math.sin(t * .28 + .5) * .55 * amp,
+    body_z: Math.sin(t * .23 + 2.4) * .45 * amp,
+    eye_x: (Math.sin(t * .38 + 3.1) * .11 + Math.sin(t * .81) * .035) * amp,
+    eye_y: Math.sin(t * .29 + 4.2) * .055 * amp,
+    breath: .5 + Math.sin(t * 1.7) * .45,
+  };
+}
+
+function maybeStartAutonomousAction() {
+  if (!autonomousIdleEnabled || actionName !== 'none' || autonomousActionName !== 'none') return;
+  if (elapsed < nextAutonomousActionAt) return;
+  const choices = ['look_around', 'soft_sway', 'look_down_up', 'soft_sway', 'look_around'];
+  autonomousActionName = choices[Math.floor(Math.random() * choices.length)];
+  autonomousActionTime = 0;
+}
+
+function finishActionIfNeeded(name, time) {
+  const action = ACTION_LIBRARY[name];
+  return Boolean(action && action.duration > 0 && time >= action.duration);
 }
 
 function tick(delta) {
@@ -220,18 +382,36 @@ function tick(delta) {
   const dt = delta / 60;
   elapsed += dt;
   actionTime += dt;
+  autonomousActionTime += dt;
   blinkTime -= dt;
 
-  const values = {
-    ...(EMOTIONS[emotionName] || EMOTIONS.neutral),
-    head_x: Math.sin(elapsed * .55) * 1.4,
-    head_y: Math.sin(elapsed * .43) * .8,
-    body_x: Math.sin(elapsed * .38) * .7,
-    breath: .5 + Math.sin(elapsed * 1.7) * .45,
-  };
-  const offsets = actionOffsets(actionName, actionTime);
-  for (const [key, value] of Object.entries(offsets)) values[key] = (values[key] || 0) + value;
-  if (actionTime >= 1.7) actionName = 'none';
+  const profile = EMOTIONS[emotionName] || EMOTIONS.neutral;
+  const values = updateEmotion(dt);
+  addValues(values, idleOffsets(profile));
+
+  maybeStartAutonomousAction();
+  if (autonomousActionName !== 'none') {
+    addValues(values, interpolateAction(autonomousActionName, autonomousActionTime));
+    if (finishActionIfNeeded(autonomousActionName, autonomousActionTime)) {
+      autonomousActionName = 'none';
+      nextAutonomousActionAt = elapsed + 7 + Math.random() * 9;
+    }
+  }
+  if (actionName !== 'none') {
+    addValues(values, interpolateAction(actionName, actionTime));
+    if (finishActionIfNeeded(actionName, actionTime)) {
+      actionName = 'none';
+      nextAutonomousActionAt = elapsed + 5 + Math.random() * 7;
+    }
+  }
+
+  const flutter = profile.flutter || 0;
+  if (flutter > 0) {
+    const shimmer = (Math.sin(elapsed * .77) * .65 + Math.sin(elapsed * 1.91 + 1.3) * .35) * flutter;
+    if (Math.abs(currentEmotionValues.cheek || 0) > .01) values.cheek += shimmer * .08;
+    if (Math.abs(currentEmotionValues.eye_l_smile || 0) > .01) values.eye_l_smile += shimmer * .05;
+    if (Math.abs(currentEmotionValues.eye_r_smile || 0) > .01) values.eye_r_smile += shimmer * .05;
+  }
 
   if (blinkTime <= 0) {
     const phase = Math.max(0, 1 - Math.abs(blinkTime + .1) / .1);
@@ -267,11 +447,40 @@ async function start() {
 window.live2dStage = {
   applyResponse(emotion = 'neutral', action = 'none') {
     emotionName = EMOTIONS[emotion] ? emotion : 'neutral';
-    actionName = action || 'none';
+    actionName = ACTION_LIBRARY[action] ? action : 'none';
     actionTime = 0;
+    autonomousActionName = 'none';
+    nextAutonomousActionAt = elapsed + 5 + Math.random() * 7;
   },
   testEmotion(name) { this.applyResponse(name, 'none'); },
   testAction(name) { this.applyResponse(emotionName, name); },
+  testExpression(name) {
+    if (!model || !name) return false;
+    Promise.resolve(model.expression(name)).catch(console.error);
+    return true;
+  },
+  clearExpression() {
+    const manager = model?.internalModel?.motionManager?.expressionManager;
+    manager?.resetExpression?.();
+  },
+  testMotion(group, index) {
+    if (!model || !group || !Number.isFinite(Number(index))) return false;
+    Promise.resolve(model.motion(group, Number(index), 3)).catch(console.error);
+    return true;
+  },
+  setAutonomousIdle(enabled) {
+    autonomousIdleEnabled = Boolean(enabled);
+    autonomousActionName = 'none';
+    nextAutonomousActionAt = elapsed + 3 + Math.random() * 5;
+    return autonomousIdleEnabled;
+  },
+  resetPerformance() {
+    emotionName = 'neutral';
+    actionName = 'none';
+    autonomousActionName = 'none';
+    actionTime = 0;
+    this.clearExpression();
+  },
   setAdjustMode(enabled) {
     adjustMode = Boolean(enabled);
     activePointers.clear();
