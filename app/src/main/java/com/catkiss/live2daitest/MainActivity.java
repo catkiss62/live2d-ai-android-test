@@ -74,7 +74,10 @@ public class MainActivity extends AppCompatActivity {
     ));
     private static final Set<String> ACTIONS = new HashSet<>(Arrays.asList(
             "none", "nod", "shake_head", "tilt_head", "lean_forward",
-            "lean_back", "blink_surprised", "sigh", "pout", "excited_bounce"
+            "lean_back", "blink_surprised", "sigh", "pout", "excited_bounce",
+            "look_around", "soft_sway", "look_down_up", "small_nod",
+            "head_tilt_idle", "side_look", "weight_shift", "gentle_lean",
+            "sigh_sink", "slow_blink", "wind_sway_soft"
     ));
     private static final String[][] ACTION_TESTS = {
             {"点头", "nod"}, {"摇头", "shake_head"}, {"歪头", "tilt_head"},
@@ -85,7 +88,9 @@ public class MainActivity extends AppCompatActivity {
             {"低头再抬起", "look_down_up"}, {"轻点头", "small_nod"},
             {"自然歪头", "head_tilt_idle"}, {"侧目观察", "side_look"},
             {"重心移动", "weight_shift"}, {"轻靠近", "gentle_lean"},
-            {"叹气下沉", "sigh_sink"}, {"慢眨眼", "slow_blink"}
+            {"叹气下沉", "sigh_sink"}, {"慢眨眼", "slow_blink"},
+            {"柔风摆动", "wind_sway_soft"}, {"明显风摆", "wind_sway_medium"},
+            {"展示级大摆", "wind_sway_showcase"}, {"视频式环绕", "showcase_orbit"}
     };
     private static final String[][] EMOTION_TESTS = {
             {"正常", "neutral"}, {"开心", "happy"}, {"难过", "sad"},
@@ -218,7 +223,7 @@ public class MainActivity extends AppCompatActivity {
         statusText.setTextColor(Color.rgb(230, 218, 250));
         statusText.setTextSize(11);
         statusText.setMaxLines(2);
-        statusText.setText("v0.2.1 · 等待导入");
+        statusText.setText("v0.2.2 · 等待导入");
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         statusLp.setMarginStart(dp(6));
         toolbar.addView(statusText, statusLp);
@@ -355,7 +360,7 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(12), dp(10), dp(12), dp(10));
-        panel.setBackground(rounded(Color.argb(82, 27, 20, 41), 18));
+        panel.setBackground(rounded(Color.argb(54, 27, 20, 41), 18));
         panel.setVisibility(View.GONE);
         panel.setClickable(true);
 
@@ -373,7 +378,7 @@ public class MainActivity extends AppCompatActivity {
         panel.addView(header);
 
         TextView hint = new TextView(this);
-        hint.setText("轻透明文字面板，可直接观察动作；ZIP预设按文件名自动登记。实际动作文件与外观预设会分开显示。");
+        hint.setText("极轻透明文字面板，可直接观察动作；新增九宫格跟随、风摆和视频式环绕测试。ZIP预设仍按文件名自动登记。");
         hint.setTextColor(Color.rgb(207, 194, 224));
         hint.setTextSize(11);
         hint.setPadding(0, dp(4), 0, dp(6));
@@ -831,7 +836,7 @@ public class MainActivity extends AppCompatActivity {
                 {"response_text":"实际回复","emotion_tag":"情绪","action_tag":"动作"}
 
                 emotion_tag只能选择：neutral, happy, sad, excited, shy, angry, surprised, thinking, empathy, love, confused
-                action_tag只能选择：none, nod, shake_head, tilt_head, lean_forward, lean_back, blink_surprised, sigh, pout, excited_bounce
+                action_tag只能选择：none, nod, shake_head, tilt_head, lean_forward, lean_back, blink_surprised, sigh, pout, excited_bounce, look_around, soft_sway, look_down_up, small_nod, head_tilt_idle, side_look, weight_shift, gentle_lean, sigh_sink, slow_blink, wind_sway_soft
                 动作只在自然时使用，大部分普通回复选择none。不要输出代码块或JSON以外的文字。
                 """;
     }
