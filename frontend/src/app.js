@@ -23,6 +23,20 @@ const PARAM_ALIASES = {
   tears_l: ['Param13'], tears_r: ['Param33'], dark: ['Param84'], daze: ['Param85'],
 };
 
+// Different Live2D models often reuse a standard parameter ID for very different
+// deformations. Keep body channels deliberately conservative, then also clamp to
+// the min/max values declared by the loaded moc3 model.
+const PARAM_SAFE_RANGES = {
+  head_x: [-18, 18], head_y: [-14, 14], head_z: [-16, 16],
+  body_x: [-6, 6], body_y: [-3, 3], body_z: [-5, 5],
+  eye_l_open: [0, 1.5], eye_r_open: [0, 1.5],
+  eye_l_smile: [0, 1], eye_r_smile: [0, 1],
+  eye_x: [-1, 1], eye_y: [-1, 1],
+  mouth_open: [0, 1], mouth_form: [-1, 1], mouth_pucker: [0, 1.2],
+  cheek: [0, 1.2], breath: [0, 1], tears_l: [0, 1], tears_r: [0, 1],
+  dark: [0, 1], daze: [0, 1],
+};
+
 const EMOTIONS = {
   neutral: { params: { eye_l_open: 1, eye_r_open: 1, mouth_form: 0, cheek: 0 }, idleAmp: 1, idleSpeed: 1, flutter: .08 },
   happy: { params: { eye_l_open: .72, eye_r_open: .72, eye_l_smile: .75, eye_r_smile: .75, mouth_form: .8, cheek: .25 }, idleAmp: 1.3, idleSpeed: 1.2, flutter: .15 },
@@ -59,19 +73,19 @@ const ACTION_LIBRARY = {
   ] },
   lean_forward: { duration: 2, keyframes: [
     { t: 0, body_y: 0, head_y: 0, head_z: 0 }, { t: .2, body_y: -1.5, head_y: 1, head_z: -1 },
-    { t: .78, body_y: 18, head_y: -4, head_z: 2 }, { t: 1.18, body_y: 22, head_y: -5.5, head_z: 2.5 },
-    { t: 1.52, body_y: 11, head_y: -2, head_z: 1 }, { t: 1.78, body_y: 4, head_y: -.6, head_z: .2 },
+    { t: .78, body_y: 2.4, head_y: -4, head_z: 2 }, { t: 1.18, body_y: 2.8, head_y: -5.5, head_z: 2.5 },
+    { t: 1.52, body_y: 1.8, head_y: -2, head_z: 1 }, { t: 1.78, body_y: .7, head_y: -.6, head_z: .2 },
     { t: 2, body_y: 0, head_y: 0, head_z: 0 },
   ] },
   lean_back: { duration: 1.25, keyframes: [
     { t: 0, body_y: 0, head_y: 0, head_z: 0 }, { t: .14, body_y: 1, head_y: -.8, head_z: .6 },
-    { t: .48, body_y: -4.5, head_y: 3.5, head_z: -1.6 }, { t: .78, body_y: -6.2, head_y: 4.6, head_z: -2 },
-    { t: 1, body_y: -2.8, head_y: 1.8, head_z: -.7 }, { t: 1.25, body_y: 0, head_y: 0, head_z: 0 },
+    { t: .48, body_y: -2, head_y: 3.5, head_z: -1.6 }, { t: .78, body_y: -2.7, head_y: 4.6, head_z: -2 },
+    { t: 1, body_y: -1.4, head_y: 1.8, head_z: -.7 }, { t: 1.25, body_y: 0, head_y: 0, head_z: 0 },
   ] },
   blink_surprised: { duration: .88, keyframes: [
     { t: 0, head_y: 0, body_y: 0, eye_l_open: 0, eye_r_open: 0, brow_l_y: 0, brow_r_y: 0, mouth_open: 0 },
     { t: .16, head_y: 2.5, body_y: 2, eye_l_open: .08, eye_r_open: .08, brow_l_y: .12, brow_r_y: .12, mouth_open: .02 },
-    { t: .36, head_y: -5.5, body_y: -6, eye_l_open: .42, eye_r_open: .42, brow_l_y: .82, brow_r_y: .82, mouth_open: .22 },
+    { t: .36, head_y: -5.5, body_y: -2.5, eye_l_open: .42, eye_r_open: .42, brow_l_y: .82, brow_r_y: .82, mouth_open: .22 },
     { t: .58, head_y: 1.8, body_y: 1.4, eye_l_open: .2, eye_r_open: .2, brow_l_y: .38, brow_r_y: .38, mouth_open: .08 },
     { t: .88, head_y: 0, body_y: 0, eye_l_open: 0, eye_r_open: 0, brow_l_y: 0, brow_r_y: 0, mouth_open: 0 },
   ] },
@@ -114,6 +128,38 @@ const ACTION_LIBRARY = {
     { t: 0, head_y: 0, eye_y: 0, body_y: 0 }, { t: .8, head_y: -7, eye_y: -.35, body_y: -1.5 },
     { t: 1.55, head_y: 5, eye_y: .22, body_y: 1 }, { t: 2.5, head_y: 0, eye_y: 0, body_y: 0 },
   ] },
+  small_nod: { duration: 1.05, keyframes: [
+    { t: 0, head_y: 0, body_y: 0 }, { t: .28, head_y: -7, body_y: -.7 },
+    { t: .53, head_y: 2.5, body_y: .25 }, { t: .78, head_y: -1.2, body_y: -.1 },
+    { t: 1.05, head_y: 0, body_y: 0 },
+  ] },
+  head_tilt_idle: { duration: 1.9, keyframes: [
+    { t: 0, head_z: 0, head_x: 0, eye_x: 0 }, { t: .55, head_z: -8, head_x: -1.5, eye_x: .2 },
+    { t: 1.35, head_z: -6, head_x: -1, eye_x: .12 }, { t: 1.9, head_z: 0, head_x: 0, eye_x: 0 },
+  ] },
+  side_look: { duration: 2.15, keyframes: [
+    { t: 0, eye_x: 0, eye_y: 0, head_x: 0, head_z: 0 },
+    { t: .35, eye_x: .65, eye_y: .06, head_x: 3, head_z: -1.5 },
+    { t: 1.35, eye_x: .56, eye_y: .04, head_x: 4.8, head_z: -2.2 },
+    { t: 1.75, eye_x: .12, eye_y: 0, head_x: 3, head_z: -1.2 },
+    { t: 2.15, eye_x: 0, eye_y: 0, head_x: 0, head_z: 0 },
+  ] },
+  weight_shift: { duration: 2.35, keyframes: [
+    { t: 0, body_x: 0, body_z: 0, head_z: 0 }, { t: .7, body_x: -3.8, body_z: -1.8, head_z: 3.5 },
+    { t: 1.6, body_x: -3.1, body_z: -1.4, head_z: 2.7 }, { t: 2.35, body_x: 0, body_z: 0, head_z: 0 },
+  ] },
+  gentle_lean: { duration: 1.8, keyframes: [
+    { t: 0, body_y: 0, head_y: 0, eye_y: 0 }, { t: .55, body_y: 1.7, head_y: -3.5, eye_y: .16 },
+    { t: 1.25, body_y: 1.35, head_y: -2.7, eye_y: .12 }, { t: 1.8, body_y: 0, head_y: 0, eye_y: 0 },
+  ] },
+  sigh_sink: { duration: 2.3, keyframes: [
+    { t: 0, head_y: 0, body_y: 0, eye_y: 0 }, { t: .75, head_y: -6, body_y: -1.7, eye_y: -.3 },
+    { t: 1.65, head_y: -4.5, body_y: -1.2, eye_y: -.2 }, { t: 2.3, head_y: 0, body_y: 0, eye_y: 0 },
+  ] },
+  slow_blink: { duration: .95, keyframes: [
+    { t: 0, eye_l_open: 0, eye_r_open: 0, head_y: 0 }, { t: .38, eye_l_open: -1, eye_r_open: -1, head_y: -1 },
+    { t: .58, eye_l_open: -1, eye_r_open: -1, head_y: -1 }, { t: .95, eye_l_open: 0, eye_r_open: 0, head_y: 0 },
+  ] },
 };
 
 let app;
@@ -138,6 +184,22 @@ let autonomousActionTime = 0;
 let nextAutonomousActionAt = 5 + Math.random() * 5;
 let lastGestureCenter = null;
 let lastGestureDistance = 0;
+let touchGazeActive = false;
+let touchGazePointerId = null;
+let touchGazeTargetX = 0;
+let touchGazeTargetY = 0;
+let touchGazeX = 0;
+let touchGazeY = 0;
+let touchHeadX = 0;
+let touchHeadY = 0;
+let touchGazeReleasedAt = -100;
+let idleGazeX = 0;
+let idleGazeY = 0;
+let idleGazeTargetX = 0;
+let idleGazeTargetY = 0;
+let nextIdleGazeAt = 0;
+let recentAutonomousActions = [];
+let focusedInteraction = false;
 const indexCache = new Map();
 const activePointers = new Map();
 const currentEmotionValues = {};
@@ -187,7 +249,18 @@ function findIndex(alias) {
 
 function write(alias, value) {
   const index = findIndex(alias);
-  if (index >= 0 && Number.isFinite(value)) core.setParameterValueByIndex(index, value);
+  if (index < 0 || !Number.isFinite(value)) return;
+  let next = value;
+  const safe = PARAM_SAFE_RANGES[alias];
+  if (safe) next = Math.max(safe[0], Math.min(safe[1], next));
+  try {
+    const modelMin = core.getParameterMinimumValue(index);
+    const modelMax = core.getParameterMaximumValue(index);
+    if (Number.isFinite(modelMin) && Number.isFinite(modelMax)) {
+      next = Math.max(modelMin, Math.min(modelMax, next));
+    }
+  } catch { /* older Cubism Core: semantic ranges above are still applied */ }
+  core.setParameterValueByIndex(index, next);
 }
 
 function loadSavedTransform() {
@@ -254,20 +327,42 @@ function resetGestureBaseline() {
   lastGestureDistance = metrics.distance;
 }
 
-function installAdjustmentGestures() {
+function updateTouchGaze(event) {
+  const rect = app.view.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  touchGazeTargetX = Math.max(-1, Math.min(1,
+    ((event.clientX - rect.left) / rect.width) * 2 - 1));
+  // Cubism eye/head Y is normally positive upward.
+  touchGazeTargetY = Math.max(-1, Math.min(1,
+    1 - ((event.clientY - rect.top) / rect.height) * 2));
+}
+
+function installInteractionGestures() {
   const canvas = app.view;
+  canvas.style.touchAction = 'none';
 
   canvas.addEventListener('pointerdown', (event) => {
-    if (!adjustMode) return;
     event.preventDefault();
     canvas.setPointerCapture?.(event.pointerId);
+    if (!adjustMode) {
+      if (touchGazePointerId === null) touchGazePointerId = event.pointerId;
+      if (event.pointerId === touchGazePointerId) {
+        touchGazeActive = true;
+        updateTouchGaze(event);
+      }
+      return;
+    }
     activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     resetGestureBaseline();
   });
 
   canvas.addEventListener('pointermove', (event) => {
-    if (!adjustMode || !activePointers.has(event.pointerId)) return;
     event.preventDefault();
+    if (!adjustMode) {
+      if (event.pointerId === touchGazePointerId && touchGazeActive) updateTouchGaze(event);
+      return;
+    }
+    if (!activePointers.has(event.pointerId)) return;
     const previousCenter = lastGestureCenter;
     const previousDistance = lastGestureDistance;
     activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -287,6 +382,11 @@ function installAdjustmentGestures() {
   }, { passive: false });
 
   const finishPointer = (event) => {
+    if (event.pointerId === touchGazePointerId) {
+      touchGazeActive = false;
+      touchGazePointerId = null;
+      touchGazeReleasedAt = elapsed;
+    }
     if (!activePointers.has(event.pointerId)) return;
     activePointers.delete(event.pointerId);
     resetGestureBaseline();
@@ -352,23 +452,75 @@ function idleOffsets(profile) {
   const t = elapsed * profile.idleSpeed;
   const amp = profile.idleAmp;
   return {
-    head_x: (Math.sin(t * .55) * 2.15 + Math.sin(t * .21 + 1.2) * .85) * amp,
-    head_y: (Math.sin(t * .43 + .7) * 1.25 + Math.sin(t * .19) * .55) * amp,
-    head_z: (Math.sin(t * .31 + 2.1) * 1.15 + Math.sin(t * .13) * .45) * amp,
-    body_x: (Math.sin(t * .36) * 1.5 + Math.sin(t * .17 + 1.4) * .65) * amp,
-    body_y: Math.sin(t * .28 + .5) * .55 * amp,
-    body_z: Math.sin(t * .23 + 2.4) * .45 * amp,
-    eye_x: (Math.sin(t * .38 + 3.1) * .11 + Math.sin(t * .81) * .035) * amp,
-    eye_y: Math.sin(t * .29 + 4.2) * .055 * amp,
+    // Two non-matching waves avoid the mechanical pendulum look.
+    head_x: (Math.sin(t * .55) * 2.55 + Math.sin(t * .21 + 1.2) * 1.05) * amp,
+    head_y: (Math.sin(t * .43 + .7) * 1.45 + Math.sin(t * .19) * .65) * amp,
+    head_z: (Math.sin(t * .31 + 2.1) * 1.35 + Math.sin(t * .13) * .55) * amp,
+    body_x: (Math.sin(t * .36) * 1.8 + Math.sin(t * .17 + 1.4) * .75) * amp,
+    body_y: Math.sin(t * .28 + .5) * .24 * amp,
+    body_z: Math.sin(t * .23 + 2.4) * .65 * amp,
     breath: .5 + Math.sin(t * 1.7) * .45,
   };
 }
 
+function updateGaze(dt) {
+  const recentlyTouched = touchGazeActive || elapsed - touchGazeReleasedAt < .65;
+  if (!touchGazeActive && !recentlyTouched) {
+    touchGazeTargetX = 0;
+    touchGazeTargetY = 0;
+  }
+
+  // Soullink-inspired idle gaze: move, hold, then choose a different target.
+  if (!recentlyTouched && !focusedInteraction && elapsed >= nextIdleGazeAt) {
+    idleGazeTargetX = (Math.random() * 2 - 1) * .38;
+    idleGazeTargetY = (Math.random() * 2 - 1) * .2;
+    nextIdleGazeAt = elapsed + 1.7 + Math.random() * 3.4;
+  } else if (focusedInteraction || recentlyTouched) {
+    idleGazeTargetX = 0;
+    idleGazeTargetY = 0;
+  }
+
+  const eyeBlend = 1 - Math.exp(-dt / .085);
+  const headBlend = 1 - Math.exp(-dt / .22);
+  const idleBlend = 1 - Math.exp(-dt / .48);
+  touchGazeX += (touchGazeTargetX - touchGazeX) * eyeBlend;
+  touchGazeY += (touchGazeTargetY - touchGazeY) * eyeBlend;
+  touchHeadX += (touchGazeTargetX - touchHeadX) * headBlend;
+  touchHeadY += (touchGazeTargetY - touchHeadY) * headBlend;
+  idleGazeX += (idleGazeTargetX - idleGazeX) * idleBlend;
+  idleGazeY += (idleGazeTargetY - idleGazeY) * idleBlend;
+
+  const touchWeight = Math.max(Math.abs(touchGazeX), Math.abs(touchGazeY)) > .006 ? 1 : 0;
+  return {
+    eye_x: touchGazeX * .82 + idleGazeX * (1 - touchWeight),
+    eye_y: touchGazeY * .62 + idleGazeY * (1 - touchWeight),
+    head_x: touchHeadX * 8.5 + idleGazeX * 3.4 * (1 - touchWeight),
+    head_y: touchHeadY * 5.2 + idleGazeY * 2.2 * (1 - touchWeight),
+    // Deliberately no body_y/body_z here: touch can never squash the model.
+  };
+}
+
+function chooseAutonomousAction(profile) {
+  const weighted = emotionName === 'sad'
+    ? ['sigh_sink', 'slow_blink', 'head_tilt_idle', 'side_look']
+    : emotionName === 'excited' || emotionName === 'happy'
+      ? ['small_nod', 'weight_shift', 'look_around', 'head_tilt_idle', 'soft_sway']
+      : emotionName === 'thinking' || emotionName === 'confused'
+        ? ['side_look', 'head_tilt_idle', 'look_down_up', 'slow_blink']
+        : ['small_nod', 'head_tilt_idle', 'side_look', 'weight_shift', 'gentle_lean', 'sigh_sink', 'slow_blink', 'look_around', 'soft_sway'];
+  const candidates = weighted.filter((name) => !recentAutonomousActions.includes(name));
+  const pool = candidates.length ? candidates : weighted;
+  const selected = pool[Math.floor(Math.random() * pool.length)];
+  recentAutonomousActions.push(selected);
+  if (recentAutonomousActions.length > 3) recentAutonomousActions.shift();
+  return selected;
+}
+
 function maybeStartAutonomousAction() {
-  if (!autonomousIdleEnabled || actionName !== 'none' || autonomousActionName !== 'none') return;
+  if (!autonomousIdleEnabled || adjustMode || focusedInteraction
+      || actionName !== 'none' || autonomousActionName !== 'none') return;
   if (elapsed < nextAutonomousActionAt) return;
-  const choices = ['look_around', 'soft_sway', 'look_down_up', 'soft_sway', 'look_around'];
-  autonomousActionName = choices[Math.floor(Math.random() * choices.length)];
+  autonomousActionName = chooseAutonomousAction(EMOTIONS[emotionName] || EMOTIONS.neutral);
   autonomousActionTime = 0;
 }
 
@@ -388,13 +540,14 @@ function tick(delta) {
   const profile = EMOTIONS[emotionName] || EMOTIONS.neutral;
   const values = updateEmotion(dt);
   addValues(values, idleOffsets(profile));
+  addValues(values, updateGaze(dt));
 
   maybeStartAutonomousAction();
   if (autonomousActionName !== 'none') {
     addValues(values, interpolateAction(autonomousActionName, autonomousActionTime));
     if (finishActionIfNeeded(autonomousActionName, autonomousActionTime)) {
       autonomousActionName = 'none';
-      nextAutonomousActionAt = elapsed + 7 + Math.random() * 9;
+      nextAutonomousActionAt = elapsed + 4.8 + Math.random() * 6.7;
     }
   }
   if (actionName !== 'none') {
@@ -439,7 +592,7 @@ async function start() {
   loadSavedTransform();
   fitModel();
   addEventListener('resize', fitModel);
-  installAdjustmentGestures();
+  installInteractionGestures();
   app.ticker.add(tick);
   setStatus('');
 }
@@ -474,6 +627,23 @@ window.live2dStage = {
     nextAutonomousActionAt = elapsed + 3 + Math.random() * 5;
     return autonomousIdleEnabled;
   },
+  setFocusedInteraction(enabled) {
+    focusedInteraction = Boolean(enabled);
+    if (focusedInteraction) {
+      autonomousActionName = 'none';
+      idleGazeTargetX = 0;
+      idleGazeTargetY = 0;
+      if (actionName === 'none') {
+        actionName = 'listening';
+        actionTime = 0;
+      }
+    } else if (actionName === 'listening') {
+      actionName = 'none';
+      actionTime = 0;
+      nextAutonomousActionAt = elapsed + 2.5 + Math.random() * 3;
+    }
+    return focusedInteraction;
+  },
   resetPerformance() {
     emotionName = 'neutral';
     actionName = 'none';
@@ -485,7 +655,12 @@ window.live2dStage = {
     adjustMode = Boolean(enabled);
     activePointers.clear();
     resetGestureBaseline();
-    if (app?.view) app.view.style.touchAction = adjustMode ? 'none' : 'auto';
+    touchGazeActive = false;
+    touchGazePointerId = null;
+    touchGazeTargetX = 0;
+    touchGazeTargetY = 0;
+    autonomousActionName = 'none';
+    if (app?.view) app.view.style.touchAction = 'none';
     if (!adjustMode) saveTransform();
     return adjustMode;
   },
