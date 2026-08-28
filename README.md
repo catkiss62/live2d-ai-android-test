@@ -15,14 +15,16 @@
 - 开启思考模式并发送 `reasoning_effort: high`
 - 11 种基础情绪和 8 种对话动作
 - 针对“迷梦”模型优先使用 `ParamAngleX2/Y2/Z2` 等实际参数
+- 模型调整模式：单指拖动、双指缩放，完成后自动保存位置和大小
 
 ## 首次使用
 
 1. 安装 GitHub Actions 生成的 debug APK。
 2. 点击“导入模型ZIP”，选择完整 Live2D 模型包，例如 `1083.【迷梦】.zip`。
 3. 保持联网，App 会从 Live2D 官方地址加载 Cubism Core。
-4. 打开“API设置”，填写 DeepSeek API Key；默认 Base URL 为 `https://api.deepseek.com`。
-5. 发送对话，观察文字回复、情绪和动作反馈。
+4. 如需调整构图，点击“调整模型”，单指拖动、双指缩放，再点“完成调整”保存；长按按钮可恢复默认。
+5. 打开“API设置”，填写 DeepSeek API Key；默认 Base URL 为 `https://api.deepseek.com`。
+6. 发送对话，观察文字回复、情绪和动作反馈。
 
 如果需要离线使用，可以从 Cubism SDK for Web 的 `Core/` 目录取得
 `live2dcubismcore.min.js`，再点击 App 顶部的“离线Core”导入。
