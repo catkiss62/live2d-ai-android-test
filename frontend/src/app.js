@@ -27,8 +27,10 @@ const PARAM_ALIASES = {
 // deformations. Keep body channels deliberately conservative, then also clamp to
 // the min/max values declared by the loaded moc3 model.
 const PARAM_SAFE_RANGES = {
-  head_x: [-18, 18], head_y: [-14, 14], head_z: [-16, 16],
-  body_x: [-6, 6], body_y: [-3, 3], body_z: [-5, 5],
+  // 迷梦的 X2/Y2/Z2 是高精度物理输入。头部可充分使用声明范围；身体 Y
+  // 仍然极小，避免某些模型把纵向参数做成压扁/拉伸。
+  head_x: [-28, 28], head_y: [-24, 24], head_z: [-24, 24],
+  body_x: [-8, 8], body_y: [-1.2, 1.2], body_z: [-7, 7],
   eye_l_open: [0, 1.5], eye_r_open: [0, 1.5],
   eye_l_smile: [0, 1], eye_r_smile: [0, 1],
   eye_x: [-1, 1], eye_y: [-1, 1],
@@ -160,7 +162,47 @@ const ACTION_LIBRARY = {
     { t: 0, eye_l_open: 0, eye_r_open: 0, head_y: 0 }, { t: .38, eye_l_open: -1, eye_r_open: -1, head_y: -1 },
     { t: .58, eye_l_open: -1, eye_r_open: -1, head_y: -1 }, { t: .95, eye_l_open: 0, eye_r_open: 0, head_y: 0 },
   ] },
+  // Coupled head/body oscillators: each channel has a different phase and speed,
+  // so the body follows the head instead of moving like one rigid cardboard layer.
+  wind_sway_soft: { duration: 6.2, sample: (time, duration) => sampleWindSway(time, duration, .68) },
+  wind_sway_medium: { duration: 6.6, sample: (time, duration) => sampleWindSway(time, duration, 1) },
+  wind_sway_showcase: { duration: 7.2, sample: (time, duration) => sampleWindSway(time, duration, 1.34) },
+  // A hand-authored large arc based on the supplied model-showcase clip. Head leads;
+  // torso and shoulders arrive later, while body_y stays tiny for this model.
+  showcase_orbit: { duration: 5.2, keyframes: [
+    { t: 0, head_x: 0, head_y: 0, head_z: 0, body_x: 0, body_y: 0, body_z: 0, eye_x: 0, eye_y: 0 },
+    { t: .52, head_x: -12, head_y: 9, head_z: -9, body_x: -2.4, body_y: .2, body_z: -1.8, eye_x: -.38, eye_y: .28 },
+    { t: 1.08, head_x: -22, head_y: 1, head_z: -15, body_x: -6.6, body_y: .55, body_z: -5.5, eye_x: -.7, eye_y: .04 },
+    { t: 1.72, head_x: -8, head_y: -12, head_z: -5, body_x: -5.2, body_y: -.4, body_z: -4.2, eye_x: -.24, eye_y: -.38 },
+    { t: 2.38, head_x: 16, head_y: -9, head_z: 12, body_x: 2.8, body_y: -.52, body_z: 2.4, eye_x: .5, eye_y: -.3 },
+    { t: 3.02, head_x: 23, head_y: 5, head_z: 16, body_x: 6.8, body_y: .25, body_z: 5.8, eye_x: .72, eye_y: .16 },
+    { t: 3.68, head_x: 7, head_y: 13, head_z: 5, body_x: 5.1, body_y: .58, body_z: 4.1, eye_x: .2, eye_y: .42 },
+    { t: 4.28, head_x: -9, head_y: 5, head_z: -7, body_x: -.8, body_y: .15, body_z: -.7, eye_x: -.28, eye_y: .15 },
+    { t: 4.78, head_x: 3, head_y: -2, head_z: 2, body_x: .8, body_y: -.08, body_z: .65, eye_x: .08, eye_y: -.05 },
+    { t: 5.2, head_x: 0, head_y: 0, head_z: 0, body_x: 0, body_y: 0, body_z: 0, eye_x: 0, eye_y: 0 },
+  ] },
 };
+
+function sampleWindSway(time, duration, gain) {
+  const progress = Math.max(0, Math.min(1, time / duration));
+  const envelope = Math.pow(Math.max(0, Math.sin(Math.PI * progress)), .68);
+  const omega = Math.PI * 2 * .235;
+  const headWave = Math.sin(omega * time) + Math.sin(omega * .46 * time + .8) * .22;
+  const bodyWave = Math.sin(omega * time - .58) + Math.sin(omega * .43 * time + .25) * .18;
+  return {
+    head_x: (Math.sin(omega * .72 * time + 1.08) * 10
+      + Math.sin(omega * .31 * time - .4) * 1.8) * gain * envelope,
+    head_y: (Math.sin(omega * .53 * time - .38) * 5.8
+      + Math.sin(omega * 1.08 * time + .6) * 1.2) * gain * envelope,
+    head_z: headWave * 11.5 * gain * envelope,
+    body_x: (Math.sin(omega * .72 * time + .52) * 4.7
+      + Math.sin(omega * .29 * time) * .6) * gain * envelope,
+    body_y: Math.sin(omega * .55 * time - .42) * .52 * gain * envelope,
+    body_z: bodyWave * 5.2 * gain * envelope,
+    eye_x: Math.sin(omega * .72 * time + 1.18) * .18 * gain * envelope,
+    eye_y: Math.sin(omega * .53 * time - .28) * .1 * gain * envelope,
+  };
+}
 
 let app;
 let model;
@@ -192,6 +234,10 @@ let touchGazeX = 0;
 let touchGazeY = 0;
 let touchHeadX = 0;
 let touchHeadY = 0;
+let touchHeadZ = 0;
+let touchBodyX = 0;
+let touchBodyY = 0;
+let touchBodyZ = 0;
 let touchGazeReleasedAt = -100;
 let idleGazeX = 0;
 let idleGazeY = 0;
@@ -200,6 +246,8 @@ let idleGazeTargetY = 0;
 let nextIdleGazeAt = 0;
 let recentAutonomousActions = [];
 let focusedInteraction = false;
+let nextShowcaseActionAt = 28 + Math.random() * 32;
+let lastPerformanceUpdateAt = 0;
 const indexCache = new Map();
 const activePointers = new Map();
 const currentEmotionValues = {};
@@ -400,6 +448,9 @@ function installInteractionGestures() {
 function interpolateAction(name, time) {
   const action = ACTION_LIBRARY[name];
   if (!action) return {};
+  if (typeof action.sample === 'function') {
+    return action.sample(Math.min(time, action.duration), action.duration);
+  }
   const frames = action.keyframes;
   if (!frames.length) return {};
   const sampleTime = action.duration < 0 ? Math.min(time, frames[frames.length - 1].t)
@@ -480,23 +531,37 @@ function updateGaze(dt) {
     idleGazeTargetY = 0;
   }
 
-  const eyeBlend = 1 - Math.exp(-dt / .085);
-  const headBlend = 1 - Math.exp(-dt / .22);
+  const eyeBlend = 1 - Math.exp(-dt / .075);
+  const headBlend = 1 - Math.exp(-dt / .19);
+  const rollBlend = 1 - Math.exp(-dt / .25);
+  const bodyBlend = 1 - Math.exp(-dt / .43);
   const idleBlend = 1 - Math.exp(-dt / .48);
   touchGazeX += (touchGazeTargetX - touchGazeX) * eyeBlend;
   touchGazeY += (touchGazeTargetY - touchGazeY) * eyeBlend;
   touchHeadX += (touchGazeTargetX - touchHeadX) * headBlend;
   touchHeadY += (touchGazeTargetY - touchHeadY) * headBlend;
+  // Cubism's standard nine-grid focus relation: the four corners add roll (Z),
+  // while centre/top/bottom/left/right remain clean X/Y poses.
+  const touchRollTarget = -touchGazeTargetX * touchGazeTargetY;
+  touchHeadZ += (touchRollTarget - touchHeadZ) * rollBlend;
+  touchBodyX += (touchGazeTargetX - touchBodyX) * bodyBlend;
+  touchBodyY += (touchGazeTargetY - touchBodyY) * bodyBlend;
+  touchBodyZ += (touchRollTarget - touchBodyZ) * bodyBlend;
   idleGazeX += (idleGazeTargetX - idleGazeX) * idleBlend;
   idleGazeY += (idleGazeTargetY - idleGazeY) * idleBlend;
 
   const touchWeight = Math.max(Math.abs(touchGazeX), Math.abs(touchGazeY)) > .006 ? 1 : 0;
   return {
-    eye_x: touchGazeX * .82 + idleGazeX * (1 - touchWeight),
-    eye_y: touchGazeY * .62 + idleGazeY * (1 - touchWeight),
-    head_x: touchHeadX * 8.5 + idleGazeX * 3.4 * (1 - touchWeight),
-    head_y: touchHeadY * 5.2 + idleGazeY * 2.2 * (1 - touchWeight),
-    // Deliberately no body_y/body_z here: touch can never squash the model.
+    eye_x: touchGazeX * .9 + idleGazeX * (1 - touchWeight),
+    eye_y: touchGazeY * .72 + idleGazeY * (1 - touchWeight),
+    head_x: touchHeadX * 24 + idleGazeX * 3.4 * (1 - touchWeight),
+    head_y: touchHeadY * 20 + idleGazeY * 2.2 * (1 - touchWeight),
+    head_z: touchHeadZ * 18,
+    body_x: touchBodyX * 4.8,
+    // Kept below one degree: enough to feed the model's vertical physics without
+    // repeating the earlier visible squash.
+    body_y: touchBodyY * .58,
+    body_z: touchBodyZ * 3.8,
   };
 }
 
@@ -504,10 +569,10 @@ function chooseAutonomousAction(profile) {
   const weighted = emotionName === 'sad'
     ? ['sigh_sink', 'slow_blink', 'head_tilt_idle', 'side_look']
     : emotionName === 'excited' || emotionName === 'happy'
-      ? ['small_nod', 'weight_shift', 'look_around', 'head_tilt_idle', 'soft_sway']
+      ? ['small_nod', 'weight_shift', 'look_around', 'head_tilt_idle', 'soft_sway', 'wind_sway_soft']
       : emotionName === 'thinking' || emotionName === 'confused'
         ? ['side_look', 'head_tilt_idle', 'look_down_up', 'slow_blink']
-        : ['small_nod', 'head_tilt_idle', 'side_look', 'weight_shift', 'gentle_lean', 'sigh_sink', 'slow_blink', 'look_around', 'soft_sway'];
+        : ['small_nod', 'head_tilt_idle', 'side_look', 'weight_shift', 'gentle_lean', 'sigh_sink', 'slow_blink', 'look_around', 'soft_sway', 'wind_sway_soft'];
   const candidates = weighted.filter((name) => !recentAutonomousActions.includes(name));
   const pool = candidates.length ? candidates : weighted;
   const selected = pool[Math.floor(Math.random() * pool.length)];
@@ -518,7 +583,16 @@ function chooseAutonomousAction(profile) {
 
 function maybeStartAutonomousAction() {
   if (!autonomousIdleEnabled || adjustMode || focusedInteraction
+      || touchGazeActive || elapsed - touchGazeReleasedAt < 1
       || actionName !== 'none' || autonomousActionName !== 'none') return;
+  if (elapsed >= nextShowcaseActionAt) {
+    const roll = Math.random();
+    autonomousActionName = roll < .55 ? 'wind_sway_medium'
+      : roll < .86 ? 'showcase_orbit' : 'wind_sway_showcase';
+    autonomousActionTime = 0;
+    nextShowcaseActionAt = elapsed + 48 + Math.random() * 52;
+    return;
+  }
   if (elapsed < nextAutonomousActionAt) return;
   autonomousActionName = chooseAutonomousAction(EMOTIONS[emotionName] || EMOTIONS.neutral);
   autonomousActionTime = 0;
@@ -529,9 +603,8 @@ function finishActionIfNeeded(name, time) {
   return Boolean(action && action.duration > 0 && time >= action.duration);
 }
 
-function tick(delta) {
+function tick(dt) {
   if (!core) return;
-  const dt = delta / 60;
   elapsed += dt;
   actionTime += dt;
   autonomousActionTime += dt;
@@ -576,6 +649,15 @@ function tick(delta) {
   for (const [key, value] of Object.entries(values)) write(key, value);
 }
 
+function runPerformanceFrame() {
+  const now = performance.now();
+  const dt = lastPerformanceUpdateAt
+    ? Math.max(.001, Math.min(.05, (now - lastPerformanceUpdateAt) / 1000))
+    : 1 / 60;
+  lastPerformanceUpdateAt = now;
+  tick(dt);
+}
+
 async function start() {
   if (!modelPath) throw new Error('请先在App中导入Live2D模型ZIP');
   await loadCubismCore();
@@ -593,7 +675,10 @@ async function start() {
   fitModel();
   addEventListener('resize', fitModel);
   installInteractionGestures();
-  app.ticker.add(tick);
+  // afterMotionUpdate runs before this renderer's focus/physics/model update.
+  // Writing X2/Y2/Z2 here lets hair, clothing and accessories consume the new
+  // pose during the same frame instead of receiving it one frame too late.
+  model.internalModel.on('afterMotionUpdate', runPerformanceFrame);
   setStatus('');
 }
 
@@ -625,6 +710,7 @@ window.live2dStage = {
     autonomousIdleEnabled = Boolean(enabled);
     autonomousActionName = 'none';
     nextAutonomousActionAt = elapsed + 3 + Math.random() * 5;
+    nextShowcaseActionAt = elapsed + 24 + Math.random() * 32;
     return autonomousIdleEnabled;
   },
   setFocusedInteraction(enabled) {
