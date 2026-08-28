@@ -223,7 +223,7 @@ public class MainActivity extends AppCompatActivity {
         statusText.setTextColor(Color.rgb(230, 218, 250));
         statusText.setTextSize(11);
         statusText.setMaxLines(2);
-        statusText.setText("v0.2.2 · 等待导入");
+        statusText.setText("v0.2.3 · 等待导入");
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         statusLp.setMarginStart(dp(6));
         toolbar.addView(statusText, statusLp);
@@ -378,7 +378,7 @@ public class MainActivity extends AppCompatActivity {
         panel.addView(header);
 
         TextView hint = new TextView(this);
-        hint.setText("极轻透明文字面板，可直接观察动作；新增九宫格跟随、风摆和视频式环绕测试。ZIP预设仍按文件名自动登记。");
+        hint.setText("极轻透明文字面板；参数动作的头、身和视线位移已统一放大至 2 倍。ZIP预设仍按文件名自动登记。");
         hint.setTextColor(Color.rgb(207, 194, 224));
         hint.setTextSize(11);
         hint.setPadding(0, dp(4), 0, dp(6));
