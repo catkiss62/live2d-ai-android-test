@@ -92,9 +92,11 @@ public class MainActivity extends AppCompatActivity {
     private EditText modelIdInput;
     private EditText messageInput;
     private Button sendButton;
+    private Button adjustButton;
     private TextView statusText;
     private FrameLayout loadingOverlay;
     private TextView loadingText;
+    private boolean modelAdjustmentEnabled;
 
     private final ActivityResultLauncher<String[]> modelZipPicker = registerForActivityResult(
             new ActivityResultContracts.OpenDocument(), this::onModelZipPicked);
@@ -115,7 +117,7 @@ public class MainActivity extends AppCompatActivity {
         buildUi();
         configureWebView();
         loadStage();
-        addAssistantMessage("这是第一版测试。选择 Live2D 模型 ZIP 后，App 会自动联网加载官方 Cubism Core；也可以用“导入Core”设置离线 Core。然后填写 DeepSeek API Key 即可对话测试。", false);
+        addAssistantMessage("选择 Live2D 模型 ZIP 后，App 会自动联网加载官方 Cubism Core。点击“调整模型”可单指拖动、双指缩放，再点一次即可保存并锁定；长按可恢复默认位置。", false);
     }
 
     @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"})
@@ -172,11 +174,23 @@ public class MainActivity extends AppCompatActivity {
                 settingsPanel.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE));
         toolbar.addView(settingsButton);
 
+        adjustButton = compactButton("调整模型");
+        adjustButton.setOnClickListener(v -> toggleModelAdjustment());
+        adjustButton.setOnLongClickListener(v -> {
+            webView.evaluateJavascript(
+                    "window.live2dStage&&window.live2dStage.resetTransform();", null);
+            setStatus("模型位置和大小已恢复默认");
+            toast("已恢复默认位置和大小");
+            return true;
+        });
+        adjustButton.setTooltipText("点击调整；长按恢复默认");
+        toolbar.addView(adjustButton);
+
         statusText = new TextView(this);
         statusText.setTextColor(Color.rgb(230, 218, 250));
         statusText.setTextSize(11);
         statusText.setMaxLines(2);
-        statusText.setText("v0.1.3 · 等待导入");
+        statusText.setText("v0.1.4 · 等待导入");
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         statusLp.setMarginStart(dp(6));
         toolbar.addView(statusText, statusLp);
@@ -419,6 +433,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadStage() {
+        modelAdjustmentEnabled = false;
+        if (adjustButton != null) {
+            adjustButton.setText("调整模型");
+            adjustButton.setBackground(rounded(Color.argb(205, 104, 72, 148), 12));
+        }
         String relative = prefs.getString("model_path", "");
         String url = "https://appassets.androidplatform.net/assets/stage/index.html";
         if (!relative.trim().isEmpty() && new File(modelRoot, relative).isFile()) {
@@ -426,6 +445,24 @@ public class MainActivity extends AppCompatActivity {
             url += "?model=" + Uri.encode(modelUrl);
         }
         webView.loadUrl(url);
+    }
+
+    private void toggleModelAdjustment() {
+        modelAdjustmentEnabled = !modelAdjustmentEnabled;
+        adjustButton.setText(modelAdjustmentEnabled ? "完成调整" : "调整模型");
+        adjustButton.setBackground(rounded(
+                modelAdjustmentEnabled ? Color.argb(235, 174, 93, 155)
+                        : Color.argb(205, 104, 72, 148), 12));
+        String script = "window.live2dStage&&window.live2dStage.setAdjustMode("
+                + modelAdjustmentEnabled + ");";
+        webView.evaluateJavascript(script, null);
+        if (modelAdjustmentEnabled) {
+            setStatus("调整模式：单指拖动，双指缩放");
+            toastLong("单指拖动模型，双指缩放；完成后再点一次按钮");
+        } else {
+            setStatus("模型位置和大小已保存");
+            toast("模型调整已保存");
+        }
     }
 
     private void sendMessage() {
