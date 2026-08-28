@@ -115,7 +115,7 @@ public class MainActivity extends AppCompatActivity {
         buildUi();
         configureWebView();
         loadStage();
-        addAssistantMessage("这是第一版测试。先导入官方 Cubism Core，再选择 Live2D 模型 ZIP，然后填写 DeepSeek API Key。模型加载成功后就可以对话测试表情和动作。", false);
+        addAssistantMessage("这是第一版测试。选择 Live2D 模型 ZIP 后，App 会自动联网加载官方 Cubism Core；也可以用“导入Core”设置离线 Core。然后填写 DeepSeek API Key 即可对话测试。", false);
     }
 
     @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"})
@@ -163,7 +163,7 @@ public class MainActivity extends AppCompatActivity {
         modelButton.setOnClickListener(v -> modelZipPicker.launch(new String[]{"application/zip", "application/octet-stream"}));
         toolbar.addView(modelButton);
 
-        Button coreButton = compactButton("导入Core");
+        Button coreButton = compactButton("离线Core");
         coreButton.setOnClickListener(v -> corePicker.launch(new String[]{"application/javascript", "text/javascript", "*/*"}));
         toolbar.addView(coreButton);
 
@@ -176,7 +176,7 @@ public class MainActivity extends AppCompatActivity {
         statusText.setTextColor(Color.rgb(230, 218, 250));
         statusText.setTextSize(11);
         statusText.setMaxLines(2);
-        statusText.setText("v0.1.2 · 等待导入");
+        statusText.setText("v0.1.3 · 等待导入");
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         statusLp.setMarginStart(dp(6));
         toolbar.addView(statusText, statusLp);
@@ -362,7 +362,7 @@ public class MainActivity extends AppCompatActivity {
                     setStatus(result);
                     toastLong(result);
                     if (!new File(runtimeRoot, "live2dcubismcore.min.js").isFile()) {
-                        addAssistantMessage(result + "。还需要点击“导入Core”选择官方 live2dcubismcore.min.js，角色才会显示。", false);
+                        addAssistantMessage(result + "。当前没有离线 Core，App 将联网加载 Live2D 官方 Core。", false);
                     }
                     loadStage();
                 });
