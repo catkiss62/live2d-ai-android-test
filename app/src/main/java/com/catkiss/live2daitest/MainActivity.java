@@ -1,8 +1,9 @@
 package com.catkiss.live2daitest;
 
 import android.annotation.SuppressLint;
-import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -33,7 +34,6 @@ import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewClientCompat;
 
 import org.json.JSONArray;
-import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -51,9 +51,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -66,6 +64,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String DEFAULT_MODEL = "deepseek-v4-flash";
     private static final long MAX_EXTRACTED_BYTES = 1_500_000_000L;
     private static final int MAX_ZIP_ENTRIES = 8_000;
+    private static final int MAX_MOBILE_TEXTURE_SIZE = 2_048;
 
     private static final Set<String> EMOTIONS = new HashSet<>(Arrays.asList(
             "neutral", "happy", "sad", "excited", "shy", "angry",
@@ -311,10 +310,11 @@ public class MainActivity extends AppCompatActivity {
                 File modelFile = findFirst(modelRoot, ".model3.json");
                 if (modelFile == null) throw new IOException("ZIP中没有找到 .model3.json");
                 int expressionCount = registerExpressions(modelFile);
+                int optimizedTextures = optimizeModelTextures(modelFile);
                 String relative = relativePath(modelRoot, modelFile);
                 prefs.edit().putString("model_path", relative).apply();
                 runOnUiThread(() -> {
-                    setStatus("模型已导入，表情已登记 " + expressionCount + " 个");
+                    setStatus("模型已导入：表情 " + expressionCount + " 个，优化贴图 " + optimizedTextures + " 张");
                     loadStage();
                 });
             } catch (Exception e) {
@@ -551,6 +551,54 @@ public class MainActivity extends AppCompatActivity {
         references.put("Expressions", expressions);
         writeUtf8File(modelFile, modelJson.toString(2));
         return expressionFiles.size();
+    }
+
+    private int optimizeModelTextures(File modelFile) throws Exception {
+        File modelDir = modelFile.getParentFile();
+        if (modelDir == null) return 0;
+        String safeRoot = modelDir.getCanonicalPath() + File.separator;
+        JSONObject modelJson = new JSONObject(readUtf8File(modelFile));
+        JSONObject references = modelJson.optJSONObject("FileReferences");
+        JSONArray textures = references == null ? null : references.optJSONArray("Textures");
+        if (textures == null) return 0;
+
+        int optimized = 0;
+        for (int i = 0; i < textures.length(); i++) {
+            File texture = new File(modelDir, textures.optString(i, ""));
+            if (!texture.getCanonicalPath().startsWith(safeRoot) || !texture.isFile()) continue;
+
+            BitmapFactory.Options bounds = new BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            BitmapFactory.decodeFile(texture.getAbsolutePath(), bounds);
+            int largest = Math.max(bounds.outWidth, bounds.outHeight);
+            if (largest <= MAX_MOBILE_TEXTURE_SIZE || largest <= 0) continue;
+
+            int sample = 1;
+            while (largest / sample > MAX_MOBILE_TEXTURE_SIZE) sample *= 2;
+            BitmapFactory.Options options = new BitmapFactory.Options();
+            options.inSampleSize = sample;
+            options.inPreferredConfig = Bitmap.Config.ARGB_8888;
+            Bitmap bitmap = BitmapFactory.decodeFile(texture.getAbsolutePath(), options);
+            if (bitmap == null) throw new IOException("无法优化贴图：" + texture.getName());
+
+            File temporary = new File(texture.getParentFile(), texture.getName() + ".mobile.tmp");
+            try (OutputStream out = new FileOutputStream(temporary)) {
+                if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) {
+                    throw new IOException("无法写入优化贴图：" + texture.getName());
+                }
+            } finally {
+                bitmap.recycle();
+            }
+            try (InputStream in = new FileInputStream(temporary);
+                 OutputStream out = new FileOutputStream(texture, false)) {
+                copy(in, out);
+            } finally {
+                //noinspection ResultOfMethodCallIgnored
+                temporary.delete();
+            }
+            optimized++;
+        }
+        return optimized;
     }
 
     private void unzipSecure(Uri uri, File destination) throws Exception {
