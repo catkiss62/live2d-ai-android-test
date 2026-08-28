@@ -63,6 +63,16 @@ function loadScript(src) {
   });
 }
 
+async function loadCubismCore() {
+  try {
+    setStatus('正在加载本地 Cubism Core…');
+    await loadScript('https://appassets.androidplatform.net/runtime/live2dcubismcore.min.js');
+  } catch {
+    setStatus('正在联网加载 Live2D 官方 Core…');
+    await loadScript('https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js');
+  }
+}
+
 function findIndex(alias) {
   if (indexCache.has(alias)) return indexCache.get(alias);
   const aliases = PARAM_ALIASES[alias] || [alias];
@@ -141,8 +151,8 @@ function tick(delta) {
 
 async function start() {
   if (!modelPath) throw new Error('请先在App中导入Live2D模型ZIP');
-  await loadScript('https://appassets.androidplatform.net/runtime/live2dcubismcore.min.js');
-  if (!window.Live2DCubismCore) throw new Error('Cubism Core 文件无效');
+  await loadCubismCore();
+  if (!window.Live2DCubismCore) throw new Error('Cubism Core 加载失败，请检查网络或手动导入Core');
 
   const { Live2DModel } = await import('pixi-live2d-display/cubism4');
   app = new PIXI.Application({ resizeTo: window, backgroundAlpha: 0, antialias: true, resolution: Math.min(devicePixelRatio || 1, 2), autoDensity: true });
