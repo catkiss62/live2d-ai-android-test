@@ -7,6 +7,7 @@
 - Android App 内通过 WebView/WebGL 渲染 Cubism 3/4/5 模型
 - 从手机文件选择器导入完整 Live2D ZIP，不把模型素材提交到仓库
 - 自动寻找 `.model3.json` 并登记 ZIP 内的 `.exp3.json`
+- 导入时把超过 2048 的贴图副本自动缩小，降低手机黑屏和显存不足风险（原 ZIP 不变）
 - 半透明聊天面板，模型被局部遮挡属于测试设计
 - App 内填写 DeepSeek 兼容 Base URL、API Key、模型 ID
 - 默认模型：`deepseek-v4-flash`
