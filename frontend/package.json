@@ -1,0 +1,17 @@
+{
+  "name": "live2d-ai-android-stage",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@pixi/unsafe-eval": "7.4.2",
+    "pixi.js": "7.4.2",
+    "pixi-live2d-display": "0.5.0-beta"
+  },
+  "devDependencies": {
+    "vite": "5.4.14"
+  }
+}
