@@ -5,6 +5,7 @@
 ## 第一版范围
 
 - Android App 内通过 WebView/WebGL 渲染 Cubism 3/4/5 模型
+- 未导入离线 Core 时，自动使用 Live2D 官方托管的 Cubism Core for Web
 - 从手机文件选择器导入完整 Live2D ZIP，不把模型素材提交到仓库
 - 自动寻找 `.model3.json` 并登记 ZIP 内的 `.exp3.json`
 - 导入时把超过 2048 的贴图副本自动缩小，降低手机黑屏和显存不足风险（原 ZIP 不变）
@@ -18,12 +19,13 @@
 ## 首次使用
 
 1. 安装 GitHub Actions 生成的 debug APK。
-2. 从 Live2D 官方下载 Cubism SDK for Web，并接受对应许可。
-3. 从 SDK 的 `Core/` 目录取出 `live2dcubismcore.min.js`。
-4. 在 App 顶部点击“导入Core”，选择该文件。
-5. 点击“导入模型ZIP”，选择完整 Live2D 模型包，例如 `1083.【迷梦】.zip`。
-6. 打开“API设置”，填写 DeepSeek API Key；默认 Base URL 为 `https://api.deepseek.com`。
-7. 发送对话，观察文字回复、情绪和动作反馈。
+2. 点击“导入模型ZIP”，选择完整 Live2D 模型包，例如 `1083.【迷梦】.zip`。
+3. 保持联网，App 会从 Live2D 官方地址加载 Cubism Core。
+4. 打开“API设置”，填写 DeepSeek API Key；默认 Base URL 为 `https://api.deepseek.com`。
+5. 发送对话，观察文字回复、情绪和动作反馈。
+
+如果需要离线使用，可以从 Cubism SDK for Web 的 `Core/` 目录取得
+`live2dcubismcore.min.js`，再点击 App 顶部的“离线Core”导入。
 
 ## 为什么仓库不包含 Cubism Core
 
