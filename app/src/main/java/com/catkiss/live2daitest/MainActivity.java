@@ -12,6 +12,7 @@ import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.InputMethodManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -73,8 +74,22 @@ public class MainActivity extends AppCompatActivity {
     ));
     private static final Set<String> ACTIONS = new HashSet<>(Arrays.asList(
             "none", "nod", "shake_head", "tilt_head", "lean_forward",
-            "lean_back", "sigh", "pout", "excited_bounce"
+            "lean_back", "blink_surprised", "sigh", "pout", "excited_bounce"
     ));
+    private static final String[][] ACTION_TESTS = {
+            {"点头", "nod"}, {"摇头", "shake_head"}, {"歪头", "tilt_head"},
+            {"身体前倾", "lean_forward"}, {"身体后仰", "lean_back"},
+            {"惊讶一跳", "blink_surprised"}, {"叹气", "sigh"}, {"撅嘴", "pout"},
+            {"开心蹦跶", "excited_bounce"}, {"倾听姿态", "listening"},
+            {"环顾四周", "look_around"}, {"轻轻摇摆", "soft_sway"},
+            {"低头再抬起", "look_down_up"}
+    };
+    private static final String[][] EMOTION_TESTS = {
+            {"正常", "neutral"}, {"开心", "happy"}, {"难过", "sad"},
+            {"兴奋", "excited"}, {"害羞", "shy"}, {"生气", "angry"},
+            {"惊讶", "surprised"}, {"思考", "thinking"}, {"共情", "empathy"},
+            {"喜欢", "love"}, {"疑惑", "confused"}
+    };
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final JSONArray conversation = new JSONArray();
@@ -94,9 +109,14 @@ public class MainActivity extends AppCompatActivity {
     private Button sendButton;
     private Button adjustButton;
     private TextView statusText;
+    private LinearLayout testPanel;
+    private LinearLayout testPanelContent;
     private FrameLayout loadingOverlay;
     private TextView loadingText;
     private boolean modelAdjustmentEnabled;
+    private boolean autonomousIdleEnabled = true;
+    private final List<String> expressionPresets = new ArrayList<>();
+    private final List<MotionPreset> motionPresets = new ArrayList<>();
 
     private final ActivityResultLauncher<String[]> modelZipPicker = registerForActivityResult(
             new ActivityResultContracts.OpenDocument(), this::onModelZipPicked);
@@ -114,10 +134,11 @@ public class MainActivity extends AppCompatActivity {
         //noinspection ResultOfMethodCallIgnored
         runtimeRoot.mkdirs();
 
+        restoreDetectedPresets();
         buildUi();
         configureWebView();
         loadStage();
-        addAssistantMessage("选择 Live2D 模型 ZIP 后，App 会自动联网加载官方 Cubism Core。点击“调整模型”可单指拖动、双指缩放，再点一次即可保存并锁定；长按可恢复默认位置。", false);
+        addAssistantMessage("Live2D 表现层已启用自主待机、情绪过渡和关键帧动作。打开“测试面板”可逐个测试动作、情绪与 ZIP 中自动发现的预设。", false);
     }
 
     @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"})
@@ -165,10 +186,6 @@ public class MainActivity extends AppCompatActivity {
         modelButton.setOnClickListener(v -> modelZipPicker.launch(new String[]{"application/zip", "application/octet-stream"}));
         toolbar.addView(modelButton);
 
-        Button coreButton = compactButton("离线Core");
-        coreButton.setOnClickListener(v -> corePicker.launch(new String[]{"application/javascript", "text/javascript", "*/*"}));
-        toolbar.addView(coreButton);
-
         Button settingsButton = compactButton("API设置");
         settingsButton.setOnClickListener(v -> settingsPanel.setVisibility(
                 settingsPanel.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE));
@@ -186,11 +203,19 @@ public class MainActivity extends AppCompatActivity {
         adjustButton.setTooltipText("点击调整；长按恢复默认");
         toolbar.addView(adjustButton);
 
+        Button testButton = compactButton("测试面板");
+        testButton.setOnClickListener(v -> {
+            hideKeyboard();
+            rebuildTestPanel();
+            testPanel.setVisibility(testPanel.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE);
+        });
+        toolbar.addView(testButton);
+
         statusText = new TextView(this);
         statusText.setTextColor(Color.rgb(230, 218, 250));
         statusText.setTextSize(11);
         statusText.setMaxLines(2);
-        statusText.setText("v0.1.4 · 等待导入");
+        statusText.setText("v0.2.0 · 等待导入");
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         statusLp.setMarginStart(dp(6));
         toolbar.addView(statusText, statusLp);
@@ -214,6 +239,13 @@ public class MainActivity extends AppCompatActivity {
         chatLp.rightMargin = dp(8);
         chatLp.bottomMargin = dp(8);
         root.addView(chatPanel, chatLp);
+
+        testPanel = buildTestPanel();
+        FrameLayout.LayoutParams testLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(460), Gravity.CENTER);
+        testLp.leftMargin = dp(12);
+        testLp.rightMargin = dp(12);
+        root.addView(testPanel, testLp);
 
         loadingOverlay = buildLoadingOverlay();
         root.addView(loadingOverlay, new FrameLayout.LayoutParams(
@@ -267,6 +299,11 @@ public class MainActivity extends AppCompatActivity {
         panel.addView(apiKeyInput);
         panel.addView(modelIdInput);
 
+        Button coreButton = compactButton("导入离线Core（可选）");
+        coreButton.setOnClickListener(v -> corePicker.launch(
+                new String[]{"application/javascript", "text/javascript", "*/*"}));
+        panel.addView(coreButton);
+
         Button save = compactButton("保存并收起");
         save.setOnClickListener(v -> {
             prefs.edit()
@@ -309,6 +346,197 @@ public class MainActivity extends AppCompatActivity {
         composer.addView(sendButton);
         panel.addView(composer);
         return panel;
+    }
+
+    private LinearLayout buildTestPanel() {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(12), dp(10), dp(12), dp(10));
+        panel.setBackground(rounded(Color.argb(205, 27, 20, 41), 18));
+        panel.setVisibility(View.GONE);
+        panel.setClickable(true);
+
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = new TextView(this);
+        title.setText("Live2D 动作测试");
+        title.setTextColor(Color.WHITE);
+        title.setTextSize(16);
+        header.addView(title, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        Button close = panelButton("关闭");
+        close.setOnClickListener(v -> panel.setVisibility(View.GONE));
+        header.addView(close, new LinearLayout.LayoutParams(dp(64), dp(36)));
+        panel.addView(header);
+
+        TextView hint = new TextView(this);
+        hint.setText("面板为半透明，可直接观察动作；ZIP预设按文件名自动登记。实际动作文件与外观预设会分开显示。");
+        hint.setTextColor(Color.rgb(207, 194, 224));
+        hint.setTextSize(11);
+        hint.setPadding(0, dp(4), 0, dp(6));
+        panel.addView(hint);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setVerticalScrollBarEnabled(false);
+        testPanelContent = new LinearLayout(this);
+        testPanelContent.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(testPanelContent, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        panel.addView(scroll, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        rebuildTestPanel();
+        return panel;
+    }
+
+    private void rebuildTestPanel() {
+        if (testPanelContent == null) return;
+        testPanelContent.removeAllViews();
+
+        List<PanelItem> controls = new ArrayList<>();
+        controls.add(new PanelItem("恢复正常", () -> {
+            evaluateStage("window.live2dStage&&window.live2dStage.resetPerformance();");
+            setStatus("已恢复正常表情和姿态");
+        }));
+        controls.add(new PanelItem(autonomousIdleEnabled ? "暂停自主待机" : "开启自主待机", () -> {
+            autonomousIdleEnabled = !autonomousIdleEnabled;
+            evaluateStage("window.live2dStage&&window.live2dStage.setAutonomousIdle("
+                    + autonomousIdleEnabled + ");");
+            setStatus(autonomousIdleEnabled ? "自主待机已开启" : "自主待机已暂停");
+            rebuildTestPanel();
+        }));
+        addPanelSection("控制", controls);
+
+        List<PanelItem> actions = new ArrayList<>();
+        for (String[] item : ACTION_TESTS) {
+            String label = item[0];
+            String action = item[1];
+            actions.add(new PanelItem(label, () -> {
+                evaluateStage("window.live2dStage&&window.live2dStage.testAction("
+                        + JSONObject.quote(action) + ");");
+                setStatus("测试动作：" + label);
+            }));
+        }
+        addPanelSection("移植参数动作（" + actions.size() + "）", actions);
+
+        List<PanelItem> emotions = new ArrayList<>();
+        for (String[] item : EMOTION_TESTS) {
+            String label = item[0];
+            String emotion = item[1];
+            emotions.add(new PanelItem(label, () -> {
+                evaluateStage("window.live2dStage&&window.live2dStage.testEmotion("
+                        + JSONObject.quote(emotion) + ");");
+                setStatus("测试情绪：" + label);
+            }));
+        }
+        addPanelSection("情绪过渡（" + emotions.size() + "）", emotions);
+
+        if (motionPresets.isEmpty()) {
+            addPanelNote("模型动作文件", "这个 ZIP 没有 .motion3.json，因此没有作者制作的成套动画；下方参数动作仍可正常运行。");
+        } else {
+            List<PanelItem> motions = new ArrayList<>();
+            for (MotionPreset preset : motionPresets) {
+                motions.add(new PanelItem(preset.label, () -> {
+                    evaluateStage("window.live2dStage&&window.live2dStage.testMotion("
+                            + JSONObject.quote(preset.group) + "," + preset.index + ");");
+                    setStatus("测试模型动作：" + preset.label);
+                }));
+            }
+            addPanelSection("模型自带动作（" + motions.size() + "）", motions);
+        }
+
+        List<PanelItem> facePresets = new ArrayList<>();
+        List<PanelItem> appearancePresets = new ArrayList<>();
+        for (String preset : expressionPresets) {
+            PanelItem item = new PanelItem(preset, () -> {
+                evaluateStage("window.live2dStage&&window.live2dStage.testExpression("
+                        + JSONObject.quote(preset) + ");");
+                setStatus("测试ZIP预设：" + preset);
+            });
+            if (looksLikeFacePreset(preset)) facePresets.add(item);
+            else appearancePresets.add(item);
+        }
+        if (!facePresets.isEmpty()) {
+            addPanelSection("ZIP表情预设（" + facePresets.size() + "）", facePresets);
+        }
+        if (!appearancePresets.isEmpty()) {
+            addPanelSection("ZIP外观／部件预设（" + appearancePresets.size() + "）", appearancePresets);
+        }
+        if (expressionPresets.isEmpty()) {
+            addPanelNote("ZIP预设", "尚未导入模型，或模型中没有 .exp3.json 预设。");
+        }
+    }
+
+    private void addPanelSection(String title, List<PanelItem> items) {
+        TextView heading = new TextView(this);
+        heading.setText(title);
+        heading.setTextColor(Color.rgb(238, 207, 255));
+        heading.setTextSize(13);
+        heading.setPadding(dp(2), dp(9), 0, dp(4));
+        testPanelContent.addView(heading);
+
+        for (int start = 0; start < items.size(); start += 3) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            for (int column = 0; column < 3; column++) {
+                int index = start + column;
+                if (index < items.size()) {
+                    PanelItem item = items.get(index);
+                    Button button = panelButton(item.label);
+                    button.setOnClickListener(v -> item.action.run());
+                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(38), 1f);
+                    lp.setMargins(dp(2), dp(2), dp(2), dp(2));
+                    row.addView(button, lp);
+                } else {
+                    View spacer = new View(this);
+                    row.addView(spacer, new LinearLayout.LayoutParams(0, dp(38), 1f));
+                }
+            }
+            testPanelContent.addView(row);
+        }
+    }
+
+    private void addPanelNote(String title, String text) {
+        TextView note = new TextView(this);
+        note.setText(title + "\n" + text);
+        note.setTextColor(Color.rgb(205, 193, 220));
+        note.setTextSize(12);
+        note.setPadding(dp(4), dp(9), dp(4), dp(7));
+        note.setBackground(rounded(Color.argb(105, 70, 54, 86), 10));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(dp(2), dp(4), dp(2), dp(4));
+        testPanelContent.addView(note, lp);
+    }
+
+    private Button panelButton(String text) {
+        Button button = new Button(this);
+        button.setText(text);
+        button.setTextColor(Color.WHITE);
+        button.setTextSize(11);
+        button.setAllCaps(false);
+        button.setMinWidth(0);
+        button.setMinimumWidth(0);
+        button.setPadding(dp(5), 0, dp(5), 0);
+        button.setBackground(rounded(Color.argb(142, 117, 80, 148), 10));
+        return button;
+    }
+
+    private boolean looksLikeFacePreset(String name) {
+        String[] keywords = {"脸", "眼", "哭", "笑", "怒", "害羞", "发呆", "黑脸", "红晕", "嘴"};
+        for (String keyword : keywords) if (name.contains(keyword)) return true;
+        return false;
+    }
+
+    private void evaluateStage(String script) {
+        webView.evaluateJavascript(script, null);
+    }
+
+    private void hideKeyboard() {
+        if (messageInput != null) messageInput.clearFocus();
+        InputMethodManager manager = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (manager != null && webView != null) {
+            manager.hideSoftInputFromWindow(webView.getWindowToken(), 0);
+        }
     }
 
     private Button compactButton(String text) {
@@ -364,14 +592,21 @@ public class MainActivity extends AppCompatActivity {
                 postLoading("正在识别模型和表情…");
                 File modelFile = findFirst(modelRoot, ".model3.json");
                 if (modelFile == null) throw new IOException("ZIP中没有找到 .model3.json");
-                int expressionCount = registerExpressions(modelFile);
+                List<String> detectedExpressions = registerExpressions(modelFile);
+                List<MotionPreset> detectedMotions = registerMotions(modelFile);
                 postLoading("正在优化手机贴图，请耐心等待…");
                 int optimizedTextures = optimizeModelTextures(modelFile);
                 String relative = relativePath(modelRoot, modelFile);
-                prefs.edit().putString("model_path", relative).apply();
+                saveDetectedPresets(relative, detectedExpressions, detectedMotions);
                 runOnUiThread(() -> {
+                    expressionPresets.clear();
+                    expressionPresets.addAll(detectedExpressions);
+                    motionPresets.clear();
+                    motionPresets.addAll(detectedMotions);
+                    rebuildTestPanel();
                     hideLoading();
-                    String result = "模型导入成功：发现表情 " + expressionCount
+                    String result = "模型导入成功：发现预设 " + detectedExpressions.size()
+                            + " 个、动作文件 " + detectedMotions.size()
                             + " 个，优化贴图 " + optimizedTextures + " 张";
                     setStatus(result);
                     toastLong(result);
@@ -434,6 +669,8 @@ public class MainActivity extends AppCompatActivity {
 
     private void loadStage() {
         modelAdjustmentEnabled = false;
+        autonomousIdleEnabled = true;
+        if (testPanel != null) testPanel.setVisibility(View.GONE);
         if (adjustButton != null) {
             adjustButton.setText("调整模型");
             adjustButton.setBackground(rounded(Color.argb(205, 104, 72, 148), 12));
@@ -448,6 +685,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void toggleModelAdjustment() {
+        hideKeyboard();
         modelAdjustmentEnabled = !modelAdjustmentEnabled;
         adjustButton.setText(modelAdjustmentEnabled ? "完成调整" : "调整模型");
         adjustButton.setBackground(rounded(
@@ -586,7 +824,7 @@ public class MainActivity extends AppCompatActivity {
                 {"response_text":"实际回复","emotion_tag":"情绪","action_tag":"动作"}
 
                 emotion_tag只能选择：neutral, happy, sad, excited, shy, angry, surprised, thinking, empathy, love, confused
-                action_tag只能选择：none, nod, shake_head, tilt_head, lean_forward, lean_back, sigh, pout, excited_bounce
+                action_tag只能选择：none, nod, shake_head, tilt_head, lean_forward, lean_back, blink_surprised, sigh, pout, excited_bounce
                 动作只在自然时使用，大部分普通回复选择none。不要输出代码块或JSON以外的文字。
                 """;
     }
@@ -624,9 +862,9 @@ public class MainActivity extends AppCompatActivity {
         messageScroll.post(() -> messageScroll.fullScroll(View.FOCUS_DOWN));
     }
 
-    private int registerExpressions(File modelFile) throws Exception {
+    private List<String> registerExpressions(File modelFile) throws Exception {
         File modelDir = modelFile.getParentFile();
-        if (modelDir == null) return 0;
+        if (modelDir == null) return new ArrayList<>();
         List<File> expressionFiles = new ArrayList<>();
         collectFiles(modelDir, ".exp3.json", expressionFiles);
         expressionFiles.sort(Comparator.comparing(File::getName));
@@ -639,6 +877,7 @@ public class MainActivity extends AppCompatActivity {
         }
         JSONArray expressions = new JSONArray();
         Set<String> usedNames = new HashSet<>();
+        List<String> names = new ArrayList<>();
         for (File file : expressionFiles) {
             String name = file.getName().replaceFirst("\\.exp3\\.json$", "");
             String unique = name;
@@ -647,10 +886,117 @@ public class MainActivity extends AppCompatActivity {
             expressions.put(new JSONObject()
                     .put("Name", unique)
                     .put("File", relativePath(modelDir, file)));
+            names.add(unique);
         }
         references.put("Expressions", expressions);
         writeUtf8File(modelFile, modelJson.toString(2));
-        return expressionFiles.size();
+        return names;
+    }
+
+    private List<MotionPreset> registerMotions(File modelFile) throws Exception {
+        File modelDir = modelFile.getParentFile();
+        if (modelDir == null) return new ArrayList<>();
+        JSONObject modelJson = new JSONObject(readUtf8File(modelFile));
+        JSONObject references = modelJson.optJSONObject("FileReferences");
+        if (references == null) {
+            references = new JSONObject();
+            modelJson.put("FileReferences", references);
+        }
+        JSONObject motions = references.optJSONObject("Motions");
+        if (motions == null) {
+            motions = new JSONObject();
+            references.put("Motions", motions);
+        }
+
+        Set<String> registeredFiles = new HashSet<>();
+        java.util.Iterator<String> existingGroups = motions.keys();
+        while (existingGroups.hasNext()) {
+            JSONArray group = motions.optJSONArray(existingGroups.next());
+            if (group == null) continue;
+            for (int i = 0; i < group.length(); i++) {
+                String file = group.optJSONObject(i) == null ? ""
+                        : group.optJSONObject(i).optString("File", "");
+                if (!file.isEmpty()) registeredFiles.add(file.replace('\\', '/'));
+            }
+        }
+
+        List<File> motionFiles = new ArrayList<>();
+        collectFiles(modelDir, ".motion3.json", motionFiles);
+        motionFiles.sort(Comparator.comparing(File::getName));
+        JSONArray automatic = motions.optJSONArray("AutoDetected");
+        if (automatic == null) automatic = new JSONArray();
+        for (File file : motionFiles) {
+            String relative = relativePath(modelDir, file);
+            if (registeredFiles.add(relative)) {
+                automatic.put(new JSONObject().put("File", relative));
+            }
+        }
+        if (automatic.length() > 0) motions.put("AutoDetected", automatic);
+        writeUtf8File(modelFile, modelJson.toString(2));
+
+        List<String> groupNames = new ArrayList<>();
+        java.util.Iterator<String> groups = motions.keys();
+        while (groups.hasNext()) groupNames.add(groups.next());
+        groupNames.sort(String::compareToIgnoreCase);
+        List<MotionPreset> presets = new ArrayList<>();
+        for (String groupName : groupNames) {
+            JSONArray group = motions.optJSONArray(groupName);
+            if (group == null) continue;
+            for (int i = 0; i < group.length(); i++) {
+                JSONObject entry = group.optJSONObject(i);
+                String file = entry == null ? "" : entry.optString("File", "");
+                String label = file.replace('\\', '/');
+                int slash = label.lastIndexOf('/');
+                if (slash >= 0) label = label.substring(slash + 1);
+                label = label.replaceFirst("\\.motion3\\.json$", "");
+                if (label.isEmpty()) label = groupName + " " + (i + 1);
+                presets.add(new MotionPreset(groupName, i, label));
+            }
+        }
+        return presets;
+    }
+
+    private void saveDetectedPresets(String modelPath, List<String> expressions,
+                                     List<MotionPreset> motions) throws Exception {
+        JSONArray expressionJson = new JSONArray();
+        for (String expression : expressions) expressionJson.put(expression);
+        JSONArray motionJson = new JSONArray();
+        for (MotionPreset motion : motions) {
+            motionJson.put(new JSONObject()
+                    .put("group", motion.group)
+                    .put("index", motion.index)
+                    .put("label", motion.label));
+        }
+        prefs.edit()
+                .putString("model_path", modelPath)
+                .putString("detected_expressions", expressionJson.toString())
+                .putString("detected_motions", motionJson.toString())
+                .apply();
+    }
+
+    private void restoreDetectedPresets() {
+        expressionPresets.clear();
+        motionPresets.clear();
+        try {
+            JSONArray expressions = new JSONArray(
+                    prefs.getString("detected_expressions", "[]"));
+            for (int i = 0; i < expressions.length(); i++) {
+                String name = expressions.optString(i, "").trim();
+                if (!name.isEmpty()) expressionPresets.add(name);
+            }
+            JSONArray motions = new JSONArray(prefs.getString("detected_motions", "[]"));
+            for (int i = 0; i < motions.length(); i++) {
+                JSONObject motion = motions.optJSONObject(i);
+                if (motion == null) continue;
+                String group = motion.optString("group", "").trim();
+                if (group.isEmpty()) continue;
+                motionPresets.add(new MotionPreset(group, motion.optInt("index", 0),
+                        motion.optString("label", group + " " + (i + 1))));
+            }
+        } catch (Exception ignored) {
+            expressionPresets.clear();
+            motionPresets.clear();
+        }
     }
 
     private int optimizeModelTextures(File modelFile) throws Exception {
@@ -875,6 +1221,28 @@ public class MainActivity extends AppCompatActivity {
             this.text = text;
             this.emotion = emotion;
             this.action = action;
+        }
+    }
+
+    private static final class PanelItem {
+        final String label;
+        final Runnable action;
+
+        PanelItem(String label, Runnable action) {
+            this.label = label;
+            this.action = action;
+        }
+    }
+
+    private static final class MotionPreset {
+        final String group;
+        final int index;
+        final String label;
+
+        MotionPreset(String group, int index, String label) {
+            this.group = group;
+            this.index = index;
+            this.label = label;
         }
     }
 
