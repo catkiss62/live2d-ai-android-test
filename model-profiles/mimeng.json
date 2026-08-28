@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "id": "mimeng",
+  "displayName": "迷梦",
+  "status": "partially-device-verified",
+  "match": {
+    "modelFileNames": ["迷梦.model3.json"]
+  },
+  "parameterAliases": {
+    "headX": ["ParamAngleX2", "ParamAngleX"],
+    "headY": ["ParamAngleY2", "ParamAngleY"],
+    "headZ": ["ParamAngleZ2", "ParamAngleZ"],
+    "bodyX": ["ParamBodyAngleX"],
+    "bodyY": ["ParamBodyAngleY"],
+    "bodyZ": ["ParamBodyAngleZ"],
+    "eyeX": ["ParamEyeBallX"],
+    "eyeY": ["ParamEyeBallY"],
+    "mouthOpen": ["ParamMouthOpenY"],
+    "mouthForm": ["ParamMouthForm"]
+  },
+  "semanticSafeRanges": {
+    "headX": [-30, 30],
+    "headY": [-30, 30],
+    "headZ": [-30, 30],
+    "bodyX": [-10, 10],
+    "bodyY": [-1.2, 1.2],
+    "bodyZ": [-10, 10],
+    "eyeX": [-1, 1],
+    "eyeY": [-1, 1],
+    "mouthOpen": [0, 1]
+  },
+  "performance": {
+    "actionPoseGain": 2,
+    "defaultTouchFollowLevel": "vivid",
+    "touchFollowLevels": {
+      "standard": {"eyeX": 0.9, "eyeY": 0.72, "headX": 24, "headY": 20, "headZ": 18, "bodyX": 4.8, "bodyY": 0.58, "bodyZ": 3.8},
+      "vivid": {"eyeX": 1.0, "eyeY": 0.9, "headX": 28, "headY": 26, "headZ": 24, "bodyX": 6.4, "bodyY": 0.62, "bodyZ": 5.0},
+      "extreme": {"eyeX": 1.0, "eyeY": 1.0, "headX": 30, "headY": 30, "headZ": 30, "bodyX": 8.0, "bodyY": 0.7, "bodyZ": 7.0}
+    }
+  },
+  "interaction": {
+    "hasAuthorHitAreas": false,
+    "defaultHeadZone": {"left": 0.22, "top": 0.02, "right": 0.78, "bottom": 0.36},
+    "headPatConfusedProbability": 0.1
+  },
+  "quirks": [
+    "ParamAngleX2/Y2/Z2 feed extensive physics and must be preferred.",
+    "ParamBodyAngleY can visibly squash or stretch the body; keep it tightly limited.",
+    "The package has no motion3 animations and no model3 HitAreas.",
+    "exp3 files include appearance and part toggles, not only facial expressions."
+  ]
+}
