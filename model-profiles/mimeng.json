@@ -33,6 +33,9 @@
     "actionPoseGain": 2,
     "emotionFaceDifferenceGain": 1.65,
     "emotionHeadPoseGain": 1.3,
+    "unamplifiedEmotions": ["shy", "confused"],
+    "shyBlushParameter": "Param83",
+    "shyBlushValue": 1.0,
     "amplifyZipExpressions": false,
     "defaultTouchFollowLevel": "vivid",
     "touchFollowLevels": {
