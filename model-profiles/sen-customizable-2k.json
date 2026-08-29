@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "id": "sen-customizable-2k",
+  "displayName": "Sen Customizable Model 2K",
+  "status": "analyzed-runtime-pending",
+  "match": {
+    "pathContains": ["Sen Customizable Model"]
+  },
+  "parameterAliases": {
+    "headX": ["ParamAngleX"],
+    "headY": ["ParamAngleY"],
+    "headZ": ["ParamAngleZ"],
+    "physicsOutputX": ["ParamAngleX2"],
+    "physicsOutputY": ["ParamAngleY2"],
+    "physicsOutputZ": ["ParamAngleZ2"],
+    "bodyX": ["ParamBodyAngleX"],
+    "bodyY": ["ParamBodyAngleY"],
+    "bodyZ": ["ParamBodyAngleZ"],
+    "eyeX": ["ParamEyeBallX"],
+    "eyeY": ["ParamEyeBallY"],
+    "mouthOpen": ["ParamMouthOpenY"],
+    "mouthForm": ["ParamMouthForm"]
+  },
+  "updateOrder": {
+    "programWrites": "afterMotionUpdate-beforePhysics",
+    "programHeadInputs": ["ParamAngleX", "ParamAngleY", "ParamAngleZ"],
+    "physicsOutputs": ["ParamAngleX2", "ParamAngleY2", "ParamAngleZ2"],
+    "reuseMimengAliasOrder": false
+  },
+  "semanticSafeRanges": {
+    "headX": [-30, 30],
+    "headY": [-30, 30],
+    "headZ": [-30, 30],
+    "bodyX": [-10, 10],
+    "bodyY": [-10, 10],
+    "bodyZ": [-10, 10],
+    "eyeX": [-1, 1],
+    "eyeY": [-1, 1],
+    "mouthOpen": [0, 1]
+  },
+  "resources": {
+    "mocBytes": 145951936,
+    "sourceTextureCount": 26,
+    "sourceTextureSize": 2048,
+    "estimatedSourceRgbaMiB": 416,
+    "estimatedPerformanceRgbaMiB": 104,
+    "expressionsTotal": 15,
+    "userFaceEffects": 9,
+    "userPropsAndStatus": 4,
+    "protectedOrSystemExpressions": ["Watermark", "press"],
+    "motionsTotal": 37,
+    "supportLoop": "daiji",
+    "keyboardMotions": 36
+  },
+  "performance": {
+    "defaultTextureMode": "performance-1k",
+    "qualityTextureMode": "source-2k",
+    "keepOriginalTextures": true,
+    "actionPoseGain": 2,
+    "emotionFaceDifferenceGain": 1.65,
+    "emotionHeadPoseGain": 1.3,
+    "defaultTouchFollowLevel": "vivid"
+  },
+  "interaction": {
+    "hasAuthorHitAreas": false,
+    "defaultHeadZone": {"left": 0.22, "top": 0.02, "right": 0.78, "bottom": 0.36},
+    "calibrationMinimumWidth": 0.08,
+    "calibrationMinimumHeight": 0.06,
+    "headPatConfusedProbability": 0.1
+  },
+  "quirks": [
+    "Standard ParamAngleX/Y/Z feed physics; X2/Y2/Z2 are outputs.",
+    "The daiji motion animates special-effect parameters rather than a full-body idle.",
+    "Keyboard motions are short key-state loops and must not enter autonomous body-action pools.",
+    "Watermark must not be exposed as an AI-controlled or normal user preset.",
+    "The package has no model3 HitAreas and no authored full-body emotion motions."
+  ]
+}

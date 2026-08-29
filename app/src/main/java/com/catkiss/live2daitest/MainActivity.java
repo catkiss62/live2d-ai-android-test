@@ -8,6 +8,7 @@ import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
@@ -67,7 +68,10 @@ public class MainActivity extends AppCompatActivity {
     private static final String DEFAULT_MODEL = "deepseek-v4-flash";
     private static final long MAX_EXTRACTED_BYTES = 1_500_000_000L;
     private static final int MAX_ZIP_ENTRIES = 8_000;
-    private static final int MAX_MOBILE_TEXTURE_SIZE = 2_048;
+    private static final int PERFORMANCE_TEXTURE_SIZE = 1_024;
+    private static final String TEXTURE_MODE_QUALITY = "quality";
+    private static final String TEXTURE_MODE_PERFORMANCE = "performance";
+    private static final String PROFILE_SEN = "sen-customizable-2k";
 
     private static final Set<String> EMOTIONS = new HashSet<>(Arrays.asList(
             "neutral", "happy", "sad", "excited", "shy", "angry",
@@ -120,7 +124,9 @@ public class MainActivity extends AppCompatActivity {
     private EditText messageInput;
     private Button sendButton;
     private Button adjustButton;
+    private Button chatButton;
     private TextView statusText;
+    private LinearLayout chatPanel;
     private LinearLayout testPanel;
     private LinearLayout testPanelContent;
     private FrameLayout loadingOverlay;
@@ -128,6 +134,8 @@ public class MainActivity extends AppCompatActivity {
     private boolean modelAdjustmentEnabled;
     private boolean autonomousIdleEnabled = true;
     private String touchFollowLevel;
+    private String textureMode;
+    private long stageLoadStartedAt;
     private final List<String> expressionPresets = new ArrayList<>();
     private final List<MotionPreset> motionPresets = new ArrayList<>();
     private final Set<String> activeAppearancePresets = new LinkedHashSet<>();
@@ -142,6 +150,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         touchFollowLevel = prefs.getString("touch_follow_level", "vivid");
+        textureMode = prefs.getString("texture_mode", TEXTURE_MODE_PERFORMANCE);
         modelRoot = new File(getFilesDir(), "live2d-model");
         runtimeRoot = new File(getFilesDir(), "cubism-runtime");
         //noinspection ResultOfMethodCallIgnored
@@ -154,7 +163,7 @@ public class MainActivity extends AppCompatActivity {
         buildUi();
         configureWebView();
         loadStage();
-        addAssistantMessage("Live2D 表现层已启用自主待机、情绪过渡和关键帧动作。打开“测试面板”可逐个测试动作、情绪与 ZIP 中自动发现的预设。", false);
+        addAssistantMessage("v0.4.0 测试版：下方固定面板可测试程序动作、Sen 原生预设和按键动作；顶部“对话”可按需打开 API 聊天。", false);
     }
 
     @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"})
@@ -188,18 +197,20 @@ public class MainActivity extends AppCompatActivity {
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.rgb(22, 18, 32));
 
-        webView = new WebView(this);
-        root.addView(webView, new FrameLayout.LayoutParams(
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        root.addView(page, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         LinearLayout toolbar = new LinearLayout(this);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
         toolbar.setGravity(Gravity.CENTER_VERTICAL);
         toolbar.setPadding(dp(8), dp(4), dp(8), dp(4));
-        toolbar.setBackgroundColor(Color.argb(175, 21, 16, 32));
+        toolbar.setBackgroundColor(Color.rgb(31, 24, 44));
 
-        Button modelButton = compactButton("导入模型ZIP");
-        modelButton.setOnClickListener(v -> modelZipPicker.launch(new String[]{"application/zip", "application/octet-stream"}));
+        Button modelButton = compactButton("导入ZIP");
+        modelButton.setOnClickListener(v -> modelZipPicker.launch(
+                new String[]{"application/zip", "application/octet-stream"}));
         toolbar.addView(modelButton);
 
         Button settingsButton = compactButton("API设置");
@@ -210,8 +221,7 @@ public class MainActivity extends AppCompatActivity {
         adjustButton = compactButton("调整模型");
         adjustButton.setOnClickListener(v -> toggleModelAdjustment());
         adjustButton.setOnLongClickListener(v -> {
-            webView.evaluateJavascript(
-                    "window.live2dStage&&window.live2dStage.resetTransform();", null);
+            evaluateStage("window.live2dStage&&window.live2dStage.resetTransform();");
             setStatus("模型位置和大小已恢复默认");
             toast("已恢复默认位置和大小");
             return true;
@@ -219,55 +229,63 @@ public class MainActivity extends AppCompatActivity {
         adjustButton.setTooltipText("点击调整；长按恢复默认");
         toolbar.addView(adjustButton);
 
-        Button testButton = compactButton("测试面板");
-        testButton.setOnClickListener(v -> {
-            hideKeyboard();
-            rebuildTestPanel();
-            testPanel.setVisibility(testPanel.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE);
-        });
-        toolbar.addView(testButton);
+        chatButton = compactButton("对话");
+        chatButton.setOnClickListener(v -> toggleChatPanel());
+        toolbar.addView(chatButton);
 
         statusText = new TextView(this);
         statusText.setTextColor(Color.rgb(230, 218, 250));
-        statusText.setTextSize(11);
-        statusText.setMaxLines(2);
-        statusText.setText("v0.3.2 · 等待导入");
-        LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        statusLp.setMarginStart(dp(6));
+        statusText.setTextSize(10);
+        statusText.setSingleLine(true);
+        statusText.setText("v0.4.0 · 等待导入");
+        LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        statusLp.setMarginStart(dp(5));
         toolbar.addView(statusText, statusLp);
+        page.addView(toolbar, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(44)));
 
-        FrameLayout.LayoutParams toolbarLp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP);
-        root.addView(toolbar, toolbarLp);
+        FrameLayout stageFrame = new FrameLayout(this);
+        webView = new WebView(this);
+        stageFrame.addView(webView, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         settingsPanel = buildSettingsPanel();
+        settingsPanel.setVisibility(View.GONE);
         FrameLayout.LayoutParams settingsLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP);
-        settingsLp.topMargin = dp(46);
         settingsLp.leftMargin = dp(8);
         settingsLp.rightMargin = dp(8);
-        root.addView(settingsPanel, settingsLp);
+        stageFrame.addView(settingsPanel, settingsLp);
 
-        LinearLayout chatPanel = buildChatPanel();
+        chatPanel = buildChatPanel();
+        chatPanel.setVisibility(View.GONE);
         FrameLayout.LayoutParams chatLp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(220), Gravity.BOTTOM);
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(190), Gravity.BOTTOM);
         chatLp.leftMargin = dp(8);
         chatLp.rightMargin = dp(8);
         chatLp.bottomMargin = dp(8);
-        root.addView(chatPanel, chatLp);
+        stageFrame.addView(chatPanel, chatLp);
+
+        page.addView(stageFrame, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 2f));
 
         testPanel = buildTestPanel();
-        FrameLayout.LayoutParams testLp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(460), Gravity.CENTER);
-        testLp.leftMargin = dp(12);
-        testLp.rightMargin = dp(12);
-        root.addView(testPanel, testLp);
+        page.addView(testPanel, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         loadingOverlay = buildLoadingOverlay();
         root.addView(loadingOverlay, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         setContentView(root);
+    }
+
+    private void toggleChatPanel() {
+        hideKeyboard();
+        boolean show = chatPanel.getVisibility() != View.VISIBLE;
+        chatPanel.setVisibility(show ? View.VISIBLE : View.GONE);
+        chatButton.setText(show ? "关闭对话" : "对话");
     }
 
     private FrameLayout buildLoadingOverlay() {
@@ -367,29 +385,26 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout buildTestPanel() {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(12), dp(10), dp(12), dp(10));
-        panel.setBackground(rounded(Color.argb(54, 27, 20, 41), 18));
-        panel.setVisibility(View.GONE);
+        panel.setPadding(dp(8), dp(6), dp(8), dp(6));
+        panel.setBackgroundColor(Color.rgb(32, 25, 45));
+        panel.setVisibility(View.VISIBLE);
         panel.setClickable(true);
 
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
         TextView title = new TextView(this);
-        title.setText("Live2D 动作测试");
+        title.setText("Live2D 固定测试面板");
         title.setTextColor(Color.WHITE);
-        title.setTextSize(16);
+        title.setTextSize(14);
         header.addView(title, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        Button close = panelButton("关闭");
-        close.setOnClickListener(v -> panel.setVisibility(View.GONE));
-        header.addView(close, new LinearLayout.LayoutParams(dp(64), dp(36)));
         panel.addView(header);
 
         TextView hint = new TextView(this);
-        hint.setText("程序情绪已增强；ZIP外观／部件使用○／✓独立开关，可同时叠加，全部还原不会修改原ZIP。");
+        hint.setText("上方约 2/3 专用于预览；本面板固定显示。Sen 的 Watermark/press 不作为普通预设开放。");
         hint.setTextColor(Color.rgb(207, 194, 224));
-        hint.setTextSize(11);
-        hint.setPadding(0, dp(4), 0, dp(6));
+        hint.setTextSize(10);
+        hint.setPadding(0, dp(2), 0, dp(3));
         panel.addView(hint);
 
         ScrollView scroll = new ScrollView(this);
@@ -431,8 +446,8 @@ public class MainActivity extends AppCompatActivity {
             setStatus("触屏跟随力度：" + touchFollowLabel());
             rebuildTestPanel();
         }));
+        controls.add(new PanelItem(textureModeLabel(), this::toggleTextureMode));
         controls.add(new PanelItem("校准摸头区域", () -> {
-            testPanel.setVisibility(View.GONE);
             evaluateStage("window.live2dStage&&window.live2dStage.beginHeadZoneCalibration();");
             toastLong("依次点击头顶区域左上角和右下角；可以框成较薄的长方形");
         }));
@@ -469,20 +484,32 @@ public class MainActivity extends AppCompatActivity {
         if (motionPresets.isEmpty()) {
             addPanelNote("模型动作文件", "这个 ZIP 没有 .motion3.json，因此没有作者制作的成套动画；下方参数动作仍可正常运行。");
         } else {
-            List<PanelItem> motions = new ArrayList<>();
+            List<PanelItem> supportMotions = new ArrayList<>();
+            List<PanelItem> keyboardMotions = new ArrayList<>();
+            List<PanelItem> otherMotions = new ArrayList<>();
             for (MotionPreset preset : motionPresets) {
-                motions.add(new PanelItem(preset.label, () -> {
+                PanelItem button = new PanelItem(
+                        "daiji".equalsIgnoreCase(preset.label) ? "特效支撑循环" : preset.label,
+                        () -> {
                     evaluateStage("window.live2dStage&&window.live2dStage.testMotion("
                             + JSONObject.quote(preset.group) + "," + preset.index + ");");
                     setStatus("测试模型动作：" + preset.label);
-                }));
+                });
+                if ("daiji".equalsIgnoreCase(preset.label)) supportMotions.add(button);
+                else if (isSenProfile()) keyboardMotions.add(button);
+                else otherMotions.add(button);
             }
-            addPanelSection("模型自带动作（" + motions.size() + "）", motions);
+            if (!supportMotions.isEmpty()) addPanelSection("Sen 特效支撑动作", supportMotions);
+            if (!keyboardMotions.isEmpty()) addPanelSection(
+                    "Sen 原生键盘动作（" + keyboardMotions.size() + "）", keyboardMotions);
+            if (!otherMotions.isEmpty()) addPanelSection(
+                    "模型自带动作（" + otherMotions.size() + "）", otherMotions);
         }
 
         List<PanelItem> facePresets = new ArrayList<>();
         List<PanelItem> appearancePresets = new ArrayList<>();
         for (String preset : expressionPresets) {
+            if (isSystemPreset(preset)) continue;
             if (looksLikeFacePreset(preset)) {
                 facePresets.add(new PanelItem(preset, () -> {
                     evaluateStage("window.live2dStage&&window.live2dStage.testExpression("
@@ -523,6 +550,30 @@ public class MainActivity extends AppCompatActivity {
         if (expressionPresets.isEmpty()) {
             addPanelNote("ZIP预设", "尚未导入模型，或模型中没有 .exp3.json 预设。");
         }
+
+        String diagnostics = prefs.getString("model_diagnostics", "").trim();
+        if (!diagnostics.isEmpty()) addPanelNote("模型诊断", diagnostics);
+    }
+
+    private String textureModeLabel() {
+        return TEXTURE_MODE_QUALITY.equals(textureMode) ? "画质：2K高清" : "画质：1K流畅";
+    }
+
+    private void toggleTextureMode() {
+        String next = TEXTURE_MODE_QUALITY.equals(textureMode)
+                ? TEXTURE_MODE_PERFORMANCE : TEXTURE_MODE_QUALITY;
+        String key = TEXTURE_MODE_QUALITY.equals(next)
+                ? "original_model_path" : "performance_model_path";
+        String path = prefs.getString(key, "");
+        if (path.trim().isEmpty() || !new File(modelRoot, path).isFile()) {
+            toastLong("当前模型没有可切换的贴图版本，请重新导入 ZIP");
+            return;
+        }
+        textureMode = next;
+        prefs.edit().putString("texture_mode", textureMode).apply();
+        rebuildTestPanel();
+        setStatus("正在切换到" + textureModeLabel().replace("画质：", ""));
+        loadStage();
     }
 
     private String touchFollowLabel() {
@@ -588,15 +639,24 @@ public class MainActivity extends AppCompatActivity {
         button.setMinWidth(0);
         button.setMinimumWidth(0);
         button.setPadding(dp(5), 0, dp(5), 0);
-        button.setBackgroundColor(Color.TRANSPARENT);
-        button.setShadowLayer(2f, 0f, 1f, Color.BLACK);
+        button.setBackground(rounded(Color.rgb(74, 57, 96), 9));
         return button;
     }
 
     private boolean looksLikeFacePreset(String name) {
-        String[] keywords = {"脸", "眼", "哭", "笑", "怒", "害羞", "发呆", "黑脸", "红晕", "嘴"};
-        for (String keyword : keywords) if (name.contains(keyword)) return true;
+        String lower = name.toLowerCase(java.util.Locale.ROOT);
+        String[] keywords = {"脸", "眼", "哭", "笑", "怒", "害羞", "发呆", "黑脸", "红晕", "嘴",
+                "blush", "dizzy", "heart eye", "shocked", "starry", "sulking", "teary", "weepy"};
+        for (String keyword : keywords) if (lower.contains(keyword)) return true;
         return false;
+    }
+
+    private boolean isSystemPreset(String name) {
+        return "watermark".equalsIgnoreCase(name) || "press".equalsIgnoreCase(name);
+    }
+
+    private boolean isSenProfile() {
+        return PROFILE_SEN.equals(prefs.getString("model_profile", "generic"));
     }
 
     private void saveActiveAppearancePresets() {
@@ -695,10 +755,12 @@ public class MainActivity extends AppCompatActivity {
                 if (modelFile == null) throw new IOException("ZIP中没有找到 .model3.json");
                 List<String> detectedExpressions = registerExpressions(modelFile);
                 List<MotionPreset> detectedMotions = registerMotions(modelFile);
-                postLoading("正在优化手机贴图，请耐心等待…");
-                int optimizedTextures = optimizeModelTextures(modelFile);
-                String relative = relativePath(modelRoot, modelFile);
-                saveDetectedPresets(relative, detectedExpressions, detectedMotions);
+                postLoading("正在分析模型并生成 1K 流畅贴图…\nSen 首次导入可能需要几分钟");
+                String profile = detectModelProfile(modelFile);
+                TexturePreparation textures = prepareTextureVariants(
+                        modelFile, detectedExpressions.size(), detectedMotions.size(), profile);
+                saveDetectedPresets(textures.originalPath, textures.performancePath, profile,
+                        textures.diagnostics, detectedExpressions, detectedMotions);
                 runOnUiThread(() -> {
                     expressionPresets.clear();
                     expressionPresets.addAll(detectedExpressions);
@@ -710,7 +772,8 @@ public class MainActivity extends AppCompatActivity {
                     hideLoading();
                     String result = "模型导入成功：发现预设 " + detectedExpressions.size()
                             + " 个、动作文件 " + detectedMotions.size()
-                            + " 个，优化贴图 " + optimizedTextures + " 张";
+                            + " 个；已准备 2K/1K 两档（当前 "
+                            + (TEXTURE_MODE_QUALITY.equals(textureMode) ? "2K" : "1K") + "）";
                     setStatus(result);
                     toastLong(result);
                     if (!new File(runtimeRoot, "live2dcubismcore.min.js").isFile()) {
@@ -773,18 +836,36 @@ public class MainActivity extends AppCompatActivity {
     private void loadStage() {
         modelAdjustmentEnabled = false;
         autonomousIdleEnabled = true;
-        if (testPanel != null) testPanel.setVisibility(View.GONE);
         if (adjustButton != null) {
             adjustButton.setText("调整模型");
             adjustButton.setBackground(rounded(Color.argb(205, 104, 72, 148), 12));
         }
-        String relative = prefs.getString("model_path", "");
+        String preferredKey = TEXTURE_MODE_QUALITY.equals(textureMode)
+                ? "original_model_path" : "performance_model_path";
+        String relative = prefs.getString(preferredKey, prefs.getString("model_path", ""));
+        if (!relative.trim().isEmpty() && !new File(modelRoot, relative).isFile()) {
+            relative = prefs.getString("model_path", "");
+        }
         String url = "https://appassets.androidplatform.net/assets/stage/index.html";
         if (!relative.trim().isEmpty() && new File(modelRoot, relative).isFile()) {
             String modelUrl = "https://appassets.androidplatform.net/model/" + encodePath(relative);
-            url += "?model=" + Uri.encode(modelUrl);
+            String profile = prefs.getString("model_profile", "generic");
+            url += "?model=" + Uri.encode(modelUrl)
+                    + "&profile=" + Uri.encode(profile)
+                    + "&textureMode=" + Uri.encode(textureMode);
         }
+        stageLoadStartedAt = SystemClock.elapsedRealtime();
         webView.loadUrl(url);
+    }
+
+    private void startNativeSupportLoop() {
+        for (MotionPreset preset : motionPresets) {
+            if ("daiji".equalsIgnoreCase(preset.label)) {
+                evaluateStage("window.live2dStage&&window.live2dStage.startSupportLoop("
+                        + JSONObject.quote(preset.group) + "," + preset.index + ");");
+                return;
+            }
+        }
     }
 
     private void toggleModelAdjustment() {
@@ -1064,7 +1145,9 @@ public class MainActivity extends AppCompatActivity {
         return presets;
     }
 
-    private void saveDetectedPresets(String modelPath, List<String> expressions,
+    private void saveDetectedPresets(String originalPath, String performancePath,
+                                     String profile, String diagnostics,
+                                     List<String> expressions,
                                      List<MotionPreset> motions) throws Exception {
         JSONArray expressionJson = new JSONArray();
         for (String expression : expressions) expressionJson.put(expression);
@@ -1076,7 +1159,11 @@ public class MainActivity extends AppCompatActivity {
                     .put("label", motion.label));
         }
         prefs.edit()
-                .putString("model_path", modelPath)
+                .putString("model_path", originalPath)
+                .putString("original_model_path", originalPath)
+                .putString("performance_model_path", performancePath)
+                .putString("model_profile", profile)
+                .putString("model_diagnostics", diagnostics)
                 .putString("detected_expressions", expressionJson.toString())
                 .putString("detected_motions", motionJson.toString())
                 .apply();
@@ -1107,55 +1194,106 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private int optimizeModelTextures(File modelFile) throws Exception {
+    private String detectModelProfile(File modelFile) {
+        String path = modelFile.getAbsolutePath().toLowerCase(java.util.Locale.ROOT);
+        if (path.contains("sen customizable model")) return PROFILE_SEN;
+        return "generic";
+    }
+
+    private TexturePreparation prepareTextureVariants(File modelFile, int expressionCount,
+                                                      int motionCount, String profile) throws Exception {
         File modelDir = modelFile.getParentFile();
-        if (modelDir == null) return 0;
+        if (modelDir == null) throw new IOException("模型目录无效");
         String safeRoot = modelDir.getCanonicalPath() + File.separator;
         JSONObject modelJson = new JSONObject(readUtf8File(modelFile));
         JSONObject references = modelJson.optJSONObject("FileReferences");
         JSONArray textures = references == null ? null : references.optJSONArray("Textures");
-        if (textures == null) return 0;
+        if (textures == null) throw new IOException("model3 没有贴图列表");
+
+        JSONObject performanceJson = new JSONObject(modelJson.toString());
+        JSONArray performanceTextures = performanceJson
+                .getJSONObject("FileReferences").getJSONArray("Textures");
+        File variantDir = new File(modelDir, "__mobile_1k");
+        //noinspection ResultOfMethodCallIgnored
+        variantDir.mkdirs();
 
         int optimized = 0;
+        int maxDimension = 0;
+        long sourceRgbaBytes = 0;
+        long performanceRgbaBytes = 0;
         for (int i = 0; i < textures.length(); i++) {
             File texture = new File(modelDir, textures.optString(i, ""));
-            if (!texture.getCanonicalPath().startsWith(safeRoot) || !texture.isFile()) continue;
+            if (!texture.getCanonicalPath().startsWith(safeRoot) || !texture.isFile()) {
+                throw new IOException("贴图路径无效：" + textures.optString(i, ""));
+            }
 
             BitmapFactory.Options bounds = new BitmapFactory.Options();
             bounds.inJustDecodeBounds = true;
             BitmapFactory.decodeFile(texture.getAbsolutePath(), bounds);
             int largest = Math.max(bounds.outWidth, bounds.outHeight);
-            if (largest <= MAX_MOBILE_TEXTURE_SIZE || largest <= 0) continue;
+            if (largest <= 0) throw new IOException("无法读取贴图尺寸：" + texture.getName());
+            maxDimension = Math.max(maxDimension, largest);
+            sourceRgbaBytes += (long) bounds.outWidth * bounds.outHeight * 4L;
 
-            postLoading("正在优化贴图 " + (i + 1) + "/" + textures.length()
-                    + "\n首次导入可能需要一两分钟");
+            if (largest <= PERFORMANCE_TEXTURE_SIZE) {
+                performanceRgbaBytes += (long) bounds.outWidth * bounds.outHeight * 4L;
+                continue;
+            }
+
+            postLoading("正在生成 1K 流畅贴图 " + (i + 1) + "/" + textures.length()
+                    + "\n保留原始 2K，不会修改源 ZIP");
 
             int sample = 1;
-            while (largest / sample > MAX_MOBILE_TEXTURE_SIZE) sample *= 2;
+            while (largest / sample > PERFORMANCE_TEXTURE_SIZE) sample *= 2;
             BitmapFactory.Options options = new BitmapFactory.Options();
             options.inSampleSize = sample;
             options.inPreferredConfig = Bitmap.Config.ARGB_8888;
             Bitmap bitmap = BitmapFactory.decodeFile(texture.getAbsolutePath(), options);
-            if (bitmap == null) throw new IOException("无法优化贴图：" + texture.getName());
+            if (bitmap == null) throw new IOException("无法生成流畅贴图：" + texture.getName());
 
-            File temporary = new File(texture.getParentFile(), texture.getName() + ".mobile.tmp");
-            try (OutputStream out = new FileOutputStream(temporary)) {
+            File target = new File(variantDir, String.format(java.util.Locale.ROOT,
+                    "texture_%02d.png", i));
+            try (OutputStream out = new FileOutputStream(target)) {
                 if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) {
-                    throw new IOException("无法写入优化贴图：" + texture.getName());
+                    throw new IOException("无法写入流畅贴图：" + texture.getName());
                 }
             } finally {
+                performanceRgbaBytes += (long) bitmap.getWidth() * bitmap.getHeight() * 4L;
                 bitmap.recycle();
             }
-            try (InputStream in = new FileInputStream(temporary);
-                 OutputStream out = new FileOutputStream(texture, false)) {
-                copy(in, out);
-            } finally {
-                //noinspection ResultOfMethodCallIgnored
-                temporary.delete();
-            }
+            performanceTextures.put(i, relativePath(modelDir, target));
             optimized++;
         }
-        return optimized;
+
+        File performanceModel = modelFile;
+        if (optimized > 0) {
+            String generatedName = modelFile.getName().replaceFirst(
+                    "\\.model3\\.json$", ".mobile1k.model3.json");
+            performanceModel = new File(modelDir, generatedName);
+            writeUtf8File(performanceModel, performanceJson.toString(2));
+        } else {
+            performanceRgbaBytes = sourceRgbaBytes;
+        }
+
+        long mocBytes = 0;
+        if (references != null) {
+            String mocPath = references.optString("Moc", "");
+            File moc = new File(modelDir, mocPath);
+            if (moc.isFile()) mocBytes = moc.length();
+        }
+        String profileName = PROFILE_SEN.equals(profile) ? "Sen Customizable 2K" : "通用模型";
+        String diagnostics = profileName + " · moc3 " + formatMiB(mocBytes)
+                + "\n贴图 " + textures.length() + " 张 · 最大 " + maxDimension + "px"
+                + "\n估算 RGBA：2K " + formatMiB(sourceRgbaBytes)
+                + " / 1K " + formatMiB(performanceRgbaBytes)
+                + "\n预设 " + expressionCount + " · motion " + motionCount
+                + " · 当前 " + (TEXTURE_MODE_QUALITY.equals(textureMode) ? "2K高清" : "1K流畅");
+        return new TexturePreparation(relativePath(modelRoot, modelFile),
+                relativePath(modelRoot, performanceModel), diagnostics);
+    }
+
+    private String formatMiB(long bytes) {
+        return String.format(java.util.Locale.ROOT, "%.1f MiB", bytes / 1048576.0);
     }
 
     private void unzipSecure(Uri uri, File destination) throws Exception {
@@ -1354,17 +1492,42 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private static final class TexturePreparation {
+        final String originalPath;
+        final String performancePath;
+        final String diagnostics;
+
+        TexturePreparation(String originalPath, String performancePath, String diagnostics) {
+            this.originalPath = originalPath;
+            this.performancePath = performancePath;
+            this.diagnostics = diagnostics;
+        }
+    }
+
     private final class StageBridge {
         @JavascriptInterface
         public void onStageStatus(String status) {
             runOnUiThread(() -> {
                 setStatus(status);
                 if ("模型已就绪".equals(status)) {
+                    long loadMs = Math.max(0, SystemClock.elapsedRealtime() - stageLoadStartedAt);
+                    setStatus("模型已就绪 · "
+                            + (TEXTURE_MODE_QUALITY.equals(textureMode) ? "2K" : "1K")
+                            + " · " + String.format(java.util.Locale.ROOT, "%.1fs", loadMs / 1000.0));
                     evaluateStage("window.live2dStage&&window.live2dStage.setTouchFollowLevel("
                             + JSONObject.quote(touchFollowLevel) + ");");
                     evaluateStage("window.live2dStage&&window.live2dStage.setAppearancePresets("
                             + activeAppearancePresetsJson() + ");");
+                    startNativeSupportLoop();
                 }
+            });
+        }
+
+        @JavascriptInterface
+        public void onStageDiagnostics(String diagnostics) {
+            runOnUiThread(() -> {
+                if (diagnostics == null || diagnostics.trim().isEmpty()) return;
+                prefs.edit().putString("runtime_diagnostics", diagnostics).apply();
             });
         }
 
