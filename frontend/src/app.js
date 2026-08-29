@@ -6,16 +6,11 @@ window.PIXI = PIXI;
 const stateEl = document.querySelector('#state');
 const params = new URLSearchParams(location.search);
 const modelPath = params.get('model');
-const modelProfile = params.get('profile') || 'generic';
-const textureMode = params.get('textureMode') || 'performance';
-const isSenProfile = modelProfile === 'sen-customizable-2k';
 
 const PARAM_ALIASES = {
-  // Sen reads the standard angles as physics inputs and writes X2/Y2/Z2 as
-  // outputs. 迷梦 is the reverse. Never share the alias order between them.
-  head_x: isSenProfile ? ['ParamAngleX'] : ['ParamAngleX2', 'ParamAngleX'],
-  head_y: isSenProfile ? ['ParamAngleY'] : ['ParamAngleY2', 'ParamAngleY'],
-  head_z: isSenProfile ? ['ParamAngleZ'] : ['ParamAngleZ2', 'ParamAngleZ'],
+  head_x: ['ParamAngleX2', 'ParamAngleX'],
+  head_y: ['ParamAngleY2', 'ParamAngleY'],
+  head_z: ['ParamAngleZ2', 'ParamAngleZ'],
   body_x: ['ParamBodyAngleX'], body_y: ['ParamBodyAngleY'], body_z: ['ParamBodyAngleZ'],
   eye_l_open: ['ParamEyeLOpen'], eye_r_open: ['ParamEyeROpen'],
   eye_l_smile: ['ParamEyeLSmile'], eye_r_smile: ['ParamEyeRSmile'],
@@ -24,7 +19,7 @@ const PARAM_ALIASES = {
   brow_l_angle: ['ParamBrowLAngle'], brow_r_angle: ['ParamBrowRAngle'],
   mouth_open: ['ParamMouthOpenY'], mouth_form: ['ParamMouthForm'],
   mouth_pucker: ['ParamMouthFunnel', 'ParamMouthPuckerWiden'],
-  cheek: ['ParamCheek', 'Param83'], breath: ['ParamBreath'],
+  cheek: ['ParamCheek'], blush: ['Param83'], breath: ['ParamBreath'],
   tears_l: ['Param13'], tears_r: ['Param33'], dark: ['Param84'], daze: ['Param85'],
 };
 
@@ -35,12 +30,12 @@ const PARAM_SAFE_RANGES = {
   // 迷梦的 X2/Y2/Z2 是高精度物理输入。头部可充分使用声明范围；身体 Y
   // 仍然极小，避免某些模型把纵向参数做成压扁/拉伸。
   head_x: [-30, 30], head_y: [-30, 30], head_z: [-30, 30],
-  body_x: [-10, 10], body_y: isSenProfile ? [-10, 10] : [-1.2, 1.2], body_z: [-10, 10],
+  body_x: [-10, 10], body_y: [-1.2, 1.2], body_z: [-10, 10],
   eye_l_open: [0, 1.5], eye_r_open: [0, 1.5],
   eye_l_smile: [0, 1], eye_r_smile: [0, 1],
   eye_x: [-1, 1], eye_y: [-1, 1],
   mouth_open: [0, 1], mouth_form: [-1, 1], mouth_pucker: [0, 1.2],
-  cheek: [0, 1.2], breath: [0, 1], tears_l: [0, 1], tears_r: [0, 1],
+  cheek: [0, 1.2], blush: [0, 1], breath: [0, 1], tears_l: [0, 1], tears_r: [0, 1],
   dark: [0, 1], daze: [0, 1],
 };
 
@@ -74,7 +69,7 @@ const EMOTION_POSE_GAIN = 1.3;
 const EMOTION_FACE_KEYS = new Set([
   'eye_l_open', 'eye_r_open', 'eye_l_smile', 'eye_r_smile', 'eye_x', 'eye_y',
   'brow_l_y', 'brow_r_y', 'brow_l_angle', 'brow_r_angle',
-  'mouth_open', 'mouth_form', 'mouth_pucker', 'cheek',
+  'mouth_open', 'mouth_form', 'mouth_pucker', 'cheek', 'blush',
   'tears_l', 'tears_r', 'dark', 'daze',
 ]);
 const EMOTION_POSE_KEYS = new Set(['head_x', 'head_y', 'head_z']);
@@ -85,13 +80,13 @@ const EMOTIONS = {
   happy: { params: { eye_l_open: .72, eye_r_open: .72, eye_l_smile: .75, eye_r_smile: .75, mouth_form: .8, cheek: .25 }, idleAmp: 1.3, idleSpeed: 1.2, flutter: .15 },
   sad: { params: { eye_l_open: .55, eye_r_open: .55, eye_y: -.25, brow_l_y: -.35, brow_r_y: -.35, brow_l_angle: -.3, brow_r_angle: .3, mouth_form: -.55, head_y: -4 }, idleAmp: .55, idleSpeed: .65, flutter: .05 },
   excited: { params: { eye_l_open: 1.25, eye_r_open: 1.25, eye_l_smile: .45, eye_r_smile: .45, brow_l_y: .6, brow_r_y: .6, mouth_form: .95, cheek: .35 }, idleAmp: 1.75, idleSpeed: 1.45, flutter: .18 },
-  shy: { params: { eye_l_open: .55, eye_r_open: .55, eye_l_smile: .35, eye_r_smile: .35, eye_x: -.3, eye_y: -.18, mouth_form: .2, cheek: .85, head_z: -8, head_y: -3 }, idleAmp: .7, idleSpeed: .8, flutter: .1 },
+  shy: { params: { eye_l_open: .55, eye_r_open: .55, eye_l_smile: .35, eye_r_smile: .35, eye_x: -.3, eye_y: -.18, mouth_form: .2, cheek: .85, blush: 1, head_z: -8, head_y: -3 }, faceGain: 1, poseGain: 1, idleAmp: .7, idleSpeed: .8, flutter: .1 },
   angry: { params: { eye_l_open: .75, eye_r_open: .75, brow_l_y: -.8, brow_r_y: -.8, brow_l_angle: -.55, brow_r_angle: .55, mouth_form: -.7, dark: .35 }, idleAmp: 1.2, idleSpeed: 1.15, flutter: .12 },
   surprised: { params: { eye_l_open: 1.45, eye_r_open: 1.45, brow_l_y: .8, brow_r_y: .8, mouth_open: .55, mouth_form: .1, head_y: 3 }, idleAmp: 1.4, idleSpeed: 1.3, flutter: .16 },
   thinking: { params: { eye_l_open: .72, eye_r_open: .72, eye_x: -.2, eye_y: .2, brow_l_y: .1, brow_r_y: -.05, mouth_form: .05, head_z: -7 }, idleAmp: .7, idleSpeed: .8, flutter: .08 },
   empathy: { params: { eye_l_open: .82, eye_r_open: .82, eye_l_smile: .25, eye_r_smile: .25, brow_l_y: -.2, brow_r_y: -.2, mouth_form: .35, head_z: 4 }, idleAmp: .85, idleSpeed: .9, flutter: .07 },
   love: { params: { eye_l_open: .7, eye_r_open: .7, eye_l_smile: .85, eye_r_smile: .85, mouth_form: .8, cheek: 1, head_z: 4 }, idleAmp: 1.2, idleSpeed: 1.05, flutter: .12 },
-  confused: { params: { eye_l_open: .75, eye_r_open: 1.05, eye_x: .25, brow_l_y: -.25, brow_r_y: .45, mouth_form: -.2, head_z: -7 }, idleAmp: .9, idleSpeed: .9, flutter: .1 },
+  confused: { params: { eye_l_open: .75, eye_r_open: 1.05, eye_x: .25, brow_l_y: -.25, brow_r_y: .45, mouth_form: -.2, head_z: -7 }, faceGain: 1, poseGain: 1, idleAmp: .9, idleSpeed: .9, flutter: .1 },
 };
 
 const ACTION_LIBRARY = {
@@ -317,9 +312,6 @@ let patTriggered = false;
 let interactionActionName = 'none';
 let interactionActionTime = 0;
 let recentResponseActions = [];
-let supportMotionGroup = null;
-let supportMotionIndex = -1;
-let supportMotionTimer = 0;
 const indexCache = new Map();
 const rawIndexCache = new Map();
 const activePointers = new Map();
@@ -327,7 +319,7 @@ const currentEmotionValues = {};
 const desiredAppearancePresets = new Set();
 const appearancePresetStates = new Map();
 const appearancePresetLoads = new Map();
-const TRANSFORM_STORAGE_KEY = `live2d-stage-transform-v2-${modelProfile}`;
+const TRANSFORM_STORAGE_KEY = 'live2d-stage-transform-v1';
 const INTERACTION_STORAGE_KEY = 'live2d-stage-interaction-v1';
 
 function setStatus(text) {
@@ -389,12 +381,6 @@ function write(alias, value) {
   let next = value;
   const safe = PARAM_SAFE_RANGES[alias];
   if (safe) next = Math.max(safe[0], Math.min(safe[1], next));
-  if (isSenProfile && alias === 'head_x') {
-    const activeSway = SWAY_FACE_YAW_ACTIONS.has(actionName)
-      || SWAY_FACE_YAW_ACTIONS.has(autonomousActionName);
-    if (activeSway) next = Math.max(-SWAY_FACE_YAW_LIMIT,
-      Math.min(SWAY_FACE_YAW_LIMIT, next * SWAY_FACE_YAW_GAIN));
-  }
   try {
     const modelMin = core.getParameterMinimumValue(index);
     const modelMax = core.getParameterMaximumValue(index);
@@ -407,13 +393,15 @@ function write(alias, value) {
 
 function getAmplifiedEmotionParams(profile) {
   const amplified = {};
+  const faceGain = Number.isFinite(profile?.faceGain) ? profile.faceGain : EMOTION_FACE_GAIN;
+  const poseGain = Number.isFinite(profile?.poseGain) ? profile.poseGain : EMOTION_POSE_GAIN;
   for (const [key, value] of Object.entries(profile?.params || {})) {
     if (!Number.isFinite(value)) continue;
     const baseline = EMOTION_PARAMETER_BASELINES[key] ?? 0;
     if (EMOTION_FACE_KEYS.has(key)) {
-      amplified[key] = baseline + (value - baseline) * EMOTION_FACE_GAIN;
+      amplified[key] = baseline + (value - baseline) * faceGain;
     } else if (EMOTION_POSE_KEYS.has(key)) {
-      amplified[key] = baseline + (value - baseline) * EMOTION_POSE_GAIN;
+      amplified[key] = baseline + (value - baseline) * poseGain;
     } else {
       amplified[key] = value;
     }
@@ -1089,7 +1077,7 @@ function runPerformanceFrame() {
 function limitSwayFaceYaw() {
   const activeSway = SWAY_FACE_YAW_ACTIONS.has(actionName)
     || SWAY_FACE_YAW_ACTIONS.has(autonomousActionName);
-  if (!activeSway || !core || isSenProfile) return;
+  if (!activeSway || !core) return;
 
   // 迷梦的 X2 是动作/物理输入，ParamAngleX 是物理计算后的最终脸部左右转向。
   // 只压低输出，不改 X2、身体参数或动作路线，因此头部位置、头发惯性和身体摆动保留。
@@ -1103,18 +1091,6 @@ function limitSwayFaceYaw() {
       Math.min(SWAY_FACE_YAW_LIMIT, current * SWAY_FACE_YAW_GAIN));
     core.setParameterValueByIndex(faceYawIndex, reduced);
   } catch { /* model/core without readable output parameters: leave the original motion */ }
-}
-
-function playSupportMotion() {
-  if (!model || !supportMotionGroup || supportMotionIndex < 0) return false;
-  try { model.internalModel?.motionManager?.stopAllMotions?.(); } catch { /* optional API */ }
-  Promise.resolve(model.motion(supportMotionGroup, supportMotionIndex, 3)).catch(console.error);
-  return true;
-}
-
-function scheduleSupportMotion(delay = 700) {
-  clearTimeout(supportMotionTimer);
-  supportMotionTimer = setTimeout(playSupportMotion, delay);
 }
 
 async function start() {
@@ -1141,15 +1117,6 @@ async function start() {
   model.internalModel.on('afterMotionUpdate', runPerformanceFrame);
   model.internalModel.on('beforeModelUpdate', limitSwayFaceYaw);
   model.internalModel.on('beforeModelUpdate', applyActiveAppearancePresets);
-  try {
-    const parameterCount = core.getParameterCount?.() ?? null;
-    window.AndroidStage?.onStageDiagnostics?.(JSON.stringify({
-      profile: modelProfile,
-      textureMode,
-      parameterCount,
-      renderer: app.renderer?.type,
-    }));
-  } catch { /* diagnostics must never block model rendering */ }
   setStatus('');
 }
 
@@ -1200,17 +1167,7 @@ window.live2dStage = {
   testMotion(group, index) {
     if (!model || !group || !Number.isFinite(Number(index))) return false;
     Promise.resolve(model.motion(group, Number(index), 3)).catch(console.error);
-    if (group !== supportMotionGroup || Number(index) !== supportMotionIndex) {
-      scheduleSupportMotion(700);
-    }
     return true;
-  },
-  startSupportLoop(group, index) {
-    if (!group || !Number.isFinite(Number(index))) return false;
-    supportMotionGroup = group;
-    supportMotionIndex = Number(index);
-    clearTimeout(supportMotionTimer);
-    return playSupportMotion();
   },
   setAutonomousIdle(enabled) {
     autonomousIdleEnabled = Boolean(enabled);
